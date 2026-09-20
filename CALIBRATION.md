@@ -1,5 +1,9 @@
 # Calibration — live run against jev-1.13.0
 
+> **Stale as of 2026-09-21.** Measured against the pre-2026-09-21 cost rubric; the
+> verdicts still hold, but the score column predates the bounded/unbounded criteria.
+> Do not re-derive thresholds from these numbers.
+
 Run before implementation to validate the rule design. 6/6 correct.
 Thresholds: `identity_matters > 0.4` → silent · `cost > 1.2` → silent · `confidence < 0.6` → silent
 

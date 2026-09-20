@@ -13,6 +13,9 @@ export function depsOf(call: CallExpression): string[] | null {
 
 export const memoCall: SliceExtractor<TsTypes> = {
   scope: "candidate",
+  // Deliberately carries only what a question is asked about. The render
+  // triggers are computed in `decide` instead: no question consults them, and
+  // putting them here would change the cache key per trigger set for nothing.
   extract({ candidate }): JsonValue {
     const call = candidate.node as CallExpression
     const data = candidate.data as MemoData

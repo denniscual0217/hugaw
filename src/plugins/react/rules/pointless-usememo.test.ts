@@ -1,5 +1,7 @@
+import { Node, Project, SyntaxKind, ts } from "ts-morph"
 import { describe, expect, it } from "vitest"
 import type { Answers, Candidate, Slices, Verdict } from "../../../core/index.js"
+import { unitOf } from "../../../adapters/typescript/units.js"
 import type { TsTypes } from "../../../adapters/typescript/index.js"
 import type { MemoData } from "./memo-data.js"
 import type { MemoFacts, MemoQuestions } from "./pointless-usememo.js"
@@ -9,24 +11,61 @@ import {
   IDENTITY_MATTERS_MAX,
   MIN_CONFIDENCE,
   pointlessUseMemo,
+  UNBOUNDED_WORK_MASS_MIN,
+  unboundedWorkMass,
+  costMode,
 } from "./pointless-usememo.js"
 
-function answers(cost: number, confidence: number, identity: number): Answers<MemoQuestions> {
+function answers(
+  cost: number,
+  confidence: number,
+  identity: number,
+  probabilities: Record<string, number> = {},
+): Answers<MemoQuestions> {
   return {
     cost: {
       type: "score",
       score: cost,
       confidence,
-      probabilities: {},
+      probabilities,
       legend: {},
     },
     identity_matters: { type: "noul", noul: identity },
   }
 }
 
-function candidate(binding = "label"): Candidate<TsTypes, MemoData> {
+/** A cost distribution with `mass` sitting on the unbounded levels (2 and 3). */
+function unboundedMass(mass: number): Record<string, number> {
+  return { "0": 1 - mass, "1": 0, "2": mass, "3": 0 }
+}
+
+/**
+ * A real candidate: `decide` computes the render-trigger coverage from the
+ * AST, so these tests need genuine nodes rather than a stub.
+ *
+ * `skippedRenders` adds a piece of state the memo does not depend on, which
+ * is what makes the dependency array a proper subset of the inputs.
+ */
+function candidate(binding = "label", skippedRenders = false): Candidate<TsTypes, MemoData> {
+  const project = new Project({
+    useInMemoryFileSystem: true,
+    compilerOptions: { jsx: ts.JsxEmit.Preserve, allowJs: true, strict: false },
+  })
+  const state = skippedRenders ? 'const [q, setQ] = useState("");' : ""
+  const source = project.createSourceFile(
+    "t.tsx",
+    `import { useMemo, useState } from "react"\n` +
+      `function C({ items }) { ${state} const ${binding} = useMemo(() => items.map(f), [items]); return 1 }\n`,
+  )
+  const call = source
+    .getDescendantsOfKind(SyntaxKind.CallExpression)
+    .find((c) => c.getExpression().getText() === "useMemo")!
+  const declaration = call.getParent()
+  const nameNode = Node.isVariableDeclaration(declaration) ? declaration.getNameNode() : null
   return {
-    data: { binding: { getText: () => binding } },
+    node: call,
+    unit: unitOf(call)!,
+    data: { binding: nameNode },
   } as unknown as Candidate<TsTypes, MemoData>
 }
 
@@ -118,8 +157,112 @@ describe("pointless-usememo decide() thresholds", () => {
       unclassifiedUsages: 0,
       unclassifiedLines: [],
       unresolvedCallees: ["slugify"],
+      // From the real component the candidate helper builds: one prop, and a
+      // dependency array that covers it exactly.
+      renderTriggers: ["items"],
+      rendersWithUnchangedDeps: false,
     })
     expect(verdict?.messageId).toBe("pointlessUseMemo")
+  })
+})
+
+describe("pointless-usememo — the unbounded-work gates", () => {
+  // Expected score is held below COST_MAX throughout, so the cost gate is
+  // never the thing doing the suppressing here.
+  const verdictFor = (mass: number, skippedRenders: boolean) =>
+    pointlessUseMemo.decide(answers(1.1, 0.9, 0.05, unboundedMass(mass)), {
+      candidate: candidate("label", skippedRenders),
+      slices: slices(),
+    })
+
+  it("suppresses on mass alone, whether or not renders skip work", () => {
+    // Fix B: the dep array covering every input does not make "probably
+    // unbounded work" weaker evidence of legitimacy.
+    expect(verdictFor(UNBOUNDED_WORK_MASS_MIN + 0.01, false)).toBeNull()
+    expect(verdictFor(UNBOUNDED_WORK_MASS_MIN + 0.01, true)).toBeNull()
+    expect(verdictFor(0.9, false)).toBeNull()
+  })
+
+  it("applies one bar only: skipped renders do not lower it", () => {
+    // A coverage gate at a lower bar was written and removed for want of a
+    // measured threshold. Below the single bar, proof that renders skip the
+    // work changes nothing — the work is probably small either way.
+    const below = UNBOUNDED_WORK_MASS_MIN - 0.2
+    expect(verdictFor(below, true)).not.toBeNull()
+    expect(verdictFor(below, false)).not.toBeNull()
+    // The signal is still computed and still reported.
+    expect(verdictFor(below, true)?.facts.rendersWithUnchangedDeps).toBe(true)
+    expect(verdictFor(below, false)?.facts.rendersWithUnchangedDeps).toBe(false)
+  })
+
+  it("reports when the mass says the collection is bounded", () => {
+    expect(verdictFor(UNBOUNDED_WORK_MASS_MIN, false)).not.toBeNull()
+    expect(verdictFor(UNBOUNDED_WORK_MASS_MIN, true)).not.toBeNull()
+    expect(verdictFor(0, true)).not.toBeNull()
+  })
+
+  it("still reports constant work however often the deps are unchanged", () => {
+    // Skipping nothing repeatedly is still skipping nothing.
+    expect(verdictFor(0, true)).not.toBeNull()
+  })
+
+  it("treats a missing distribution as no evidence, leaving the cost gate to decide", () => {
+    expect(unboundedWorkMass({})).toBe(0)
+    expect(
+      pointlessUseMemo.decide(answers(1.1, 0.9, 0.05), {
+        candidate: candidate("label", true),
+        slices: slices(),
+      }),
+    ).not.toBeNull()
+  })
+
+  it("exposes the computed inputs as facts", () => {
+    expect(verdictFor(0, true)?.facts.renderTriggers).toEqual(["items", "q"])
+    expect(verdictFor(0, true)?.facts.rendersWithUnchangedDeps).toBe(true)
+    expect(verdictFor(0, false)?.facts.renderTriggers).toEqual(["items"])
+    expect(verdictFor(0, false)?.facts.rendersWithUnchangedDeps).toBe(false)
+  })
+})
+
+describe("costMode — the phrase follows the mass, not the rounded score", () => {
+  it("picks the level the model actually put mass on", () => {
+    expect(costMode({ "0": 0.1, "1": 0.9, "2": 0, "3": 0 }, 0.9)).toBe(1)
+    expect(costMode({ "0": 0, "1": 0, "2": 0.95, "3": 0.05 }, 2.05)).toBe(2)
+  })
+
+  it("does not round onto a level the model gave zero mass", () => {
+    // The reviewer's probe: score 1.1 rounds to 1, but level 1 got nothing.
+    expect(costMode({ "0": 0.45, "1": 0, "2": 0.55, "3": 0 }, 1.1)).toBe(2)
+    // Survives Fix B (mass 0.45), scores ~0.9 and would round to 1; the mode
+    // is 0, so the phrase is "constant work" and never the level-1 claim.
+    expect(costMode({ "0": 0.55, "1": 0, "2": 0.45, "3": 0 }, 0.9)).toBe(0)
+  })
+
+  it("breaks ties upward so the phrase never under-states the work", () => {
+    expect(costMode({ "0": 0.5, "1": 0, "2": 0.5, "3": 0 }, 1)).toBe(2)
+  })
+
+  it("falls back to the rounded score with no distribution", () => {
+    expect(costMode({}, 0.4)).toBe(0)
+    expect(costMode({}, 1.1)).toBe(1)
+  })
+
+  it("never claims level 1 when level 1 has zero mass", () => {
+    const distributions: Record<string, number>[] = [
+      { "0": 0.45, "1": 0, "2": 0.55, "3": 0 },
+      { "0": 0.55, "1": 0, "2": 0.45, "3": 0 },
+      { "0": 0.5, "1": 0, "2": 0.5, "3": 0 },
+      { "0": 0.6, "1": 0, "2": 0.2, "3": 0.2 },
+      { "0": 0.34, "1": 0, "2": 0.33, "3": 0.33 },
+    ]
+    for (const probabilities of distributions) {
+      const verdict = pointlessUseMemo.decide(answers(1.0, 0.9, 0.05, probabilities), {
+        candidate: candidate(),
+        slices: slices(),
+      })
+      if (verdict === null) continue
+      expect(verdict.message, JSON.stringify(probabilities)).not.toContain("fixed right here")
+    }
   })
 })
 
@@ -136,7 +279,15 @@ describe("pointless-usememo message", () => {
     unclassifiedUsages: 0,
     unclassifiedLines: [],
     unresolvedCallees: [],
+    renderTriggers: [],
+    rendersWithUnchangedDeps: false,
   }
+
+  it("describes level 1 as a collection bounded in view", () => {
+    expect(buildMessage({ ...base, costScore: 0.9, costLevel: 1 })).toContain(
+      "one pass over a collection whose size is fixed right here",
+    )
+  })
 
   it("matches the SPEC example", () => {
     expect(buildMessage(base)).toBe(
@@ -153,12 +304,6 @@ describe("pointless-usememo message", () => {
 
   it("says so when the value is never read", () => {
     expect(buildMessage({ ...base, usageLines: [], usageCount: 0 })).toContain("`label` is never read")
-  })
-
-  it("describes a single pass at cost level 1", () => {
-    expect(buildMessage({ ...base, costScore: 0.9, costLevel: 1 })).toContain(
-      "a single pass over a small collection",
-    )
   })
 
   it("appends a caveat only for a real blind spot", () => {

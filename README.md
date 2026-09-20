@@ -159,13 +159,42 @@ What survives is judged on two questions over four context slices
 the evidence is one-sided:
 
 ```ts
-const IDENTITY_MATTERS_MAX = 0.4   // weak evidence of legitimacy is enough to stay quiet
-const COST_MAX             = 1.2
-const MIN_CONFIDENCE       = 0.6
+const IDENTITY_MATTERS_MAX    = 0.4   // weak evidence of legitimacy is enough to stay quiet
+const COST_MAX                = 1.2
+const MIN_CONFIDENCE          = 0.6
+const UNBOUNDED_WORK_MASS_MIN  = 0.5
 ```
 
 The asymmetry is deliberate: **weak** evidence of legitimacy suppresses, **strong** evidence
 of pointlessness reports. The burden of proof is on the linter.
+
+The cost rubric only asks what the payload can answer. Its levels split on whether a
+collection's size is *bounded in the code we sent* — an inline literal versus a prop array
+that could hold thousands of entries — rather than on whether a collection is "typically
+small", which is a runtime guess the model has no evidence for.
+
+### Does the memo skip work on renders that actually happen?
+
+A `useMemo` also earns its keep by doing nothing on renders where its deps are unchanged, and
+that is **computed, never asked**: `renderTriggers` collects the component's reactive inputs
+(props, `useState`/`useReducer` values, `useContext` results, other hook results — React's own
+resolved through `isReactApi`, and setters excluded because they are stable). When the
+dependency array is a *proper* subset of those inputs, some renders provably leave every dep
+unchanged, and a memo doing real work there is suppressed.
+
+Cost evidence is read as **probability mass, not expected score**, everywhere it matters. An
+expected score of 1.0 can mean "confidently one pass over a bounded literal" or "evenly split
+between constant work and an unbounded pass", and those are different facts. So more than
+half the mass on the unbounded levels suppresses outright. The message phrase follows the
+distribution's **mode** for the same reason — rounding an expected score onto a level the
+model gave zero mass would state a specific claim the model never made.
+
+`rendersWithUnchangedDeps` is **reported in `facts`, not gated on**. A gate over it was
+written and removed: it needed a threshold no live ablation supports, and small work skipped
+often is still only small work saved. The signal is carried so that ablation is cheap to run
+later. And when the deps cover every input exactly, whether the memo pays off depends on
+whether callers re-render with stable props — the same cross-file problem as `React.memo`,
+and out of MVP scope.
 
 `callee_sources` inlines the body of any function the factory calls that is declared in the
 same file *and is actually a function* — a `FunctionDeclaration`, or a binding whose

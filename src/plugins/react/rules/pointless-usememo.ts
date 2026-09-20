@@ -1,7 +1,7 @@
 import { Node, SyntaxKind } from "ts-morph"
 import type { CallExpression, Identifier } from "ts-morph"
 import { defineRule, noul, score } from "../../../core/index.js"
-import type { JsonValue, Selection, Slices } from "../../../core/index.js"
+import type { Candidate, JsonValue, Selection, Slices } from "../../../core/index.js"
 import type { FunctionLike, TsTypes } from "../../../adapters/typescript/index.js"
 import { referencesWithin } from "../../../adapters/typescript/index.js"
 import { accessChainRoot } from "../analysis/access.js"
@@ -10,6 +10,7 @@ import { escapesUnit } from "../analysis/escapes.js"
 import { comparingHookArgumentOf, dependencyArrayHookOf } from "../analysis/hooks.js"
 import { isMemoComponentTag } from "../analysis/memo-components.js"
 import { isReactApi } from "../analysis/react-imports.js"
+import { dependencyCoverage as coverageOf } from "../analysis/render-triggers.js"
 import type { MemoData } from "./memo-data.js"
 
 /* ── thresholds (SPEC §3; validated in CALIBRATION.md) ───────────────────── */
@@ -21,14 +22,91 @@ export const MIN_CONFIDENCE = 0.6
 /** Below this the identity signal is noise; between the two it earns a caveat. */
 export const IDENTITY_CAVEAT_MIN = 0.2
 
+/**
+ * How much of the cost distribution must sit on the unbounded-collection
+ * levels (2 and 3) before we stay quiet.
+ *
+ * Mass, not expected score, and deliberately so. An expected score of 1.0 can
+ * mean "confidently one pass over a bounded literal" or "evenly split between
+ * constant work and an unbounded pass", and only the second is work worth
+ * skipping. Thresholding the score would also put the decision three
+ * hundredths away from a measured bounded literal (~0.97) — a coin flip
+ * waiting for a model update, failing silently by dropping a true positive.
+ */
+export const UNBOUNDED_WORK_MASS_MIN = 0.5
+
+/**
+ * There is deliberately no second, lower threshold for the case where
+ * `rendersWithUnchangedDeps` holds.
+ *
+ * Such a gate was written and removed. It is absent for want of a *measured*
+ * threshold, not because the signal is wrong: every other threshold here came
+ * from a live ablation, and a hand-picked one that only ever suppresses is
+ * still an unmeasured decision to drop findings. On the reasoning alone the
+ * band does not earn it either — mass between 0.25 and 0.5 means the model
+ * put 50–75% on levels 0–1, and small work skipped often is still only small
+ * work saved, which is the same argument that gives this gate a cost floor at
+ * all.
+ *
+ * What would justify adding it back: a live ablation over cases whose mass
+ * falls in that band, showing that suppressing them is right more often than
+ * reporting them. `rendersWithUnchangedDeps` is computed and carried in
+ * `facts` precisely so that ablation is cheap to run.
+ */
+
+/** Probability that the factory works over a collection unbounded in view. */
+export function unboundedWorkMass(probabilities: Readonly<Record<string, number>>): number {
+  // No distribution means no evidence: let the cost gate be the backstop
+  // rather than suppressing on an unproven premise.
+  if (Object.keys(probabilities).length === 0) return 0
+  return 1 - (probabilities["0"] ?? 0) - (probabilities["1"] ?? 0)
+}
+
+/**
+ * The rubric level the model actually put most mass on.
+ *
+ * `Math.round(score)` is not safe here: each level is now a specific factual
+ * claim, and a bimodal answer rounds onto a level the model gave *zero* mass.
+ * `{0: .45, 1: 0, 2: .55}` scores 1.1 and rounds to "bounded right here" —
+ * the opposite of what the model said. Ties break upward, so the phrase never
+ * under-states the work.
+ */
+export function costMode(
+  probabilities: Readonly<Record<string, number>>,
+  fallbackScore: number,
+): number {
+  let mode: number | null = null
+  let best = -1
+  for (const key of Object.keys(probabilities).sort((a, b) => Number(a) - Number(b))) {
+    const level = Number(key)
+    const mass = probabilities[key]
+    if (!Number.isFinite(level) || mass === undefined) continue
+    if (mass >= best) {
+      best = mass
+      mode = level
+    }
+  }
+  return mode ?? Math.round(fallbackScore)
+}
+
 /* ── the one paid step ───────────────────────────────────────────────────── */
 
+/**
+ * The cost rubric asks only what the model can see.
+ *
+ * The first version's level 1 read "a collection that is typically small",
+ * which is a size judgement with no size evidence anywhere in the payload —
+ * `items.filter(...)` on a prop array matched it and produced a false
+ * positive on load-bearing code. The levels now split on whether the
+ * collection's size is *bounded in the code we sent*, which is a property of
+ * the slice rather than a guess about runtime.
+ */
 const questions = {
-  cost: score("How expensive is the computation inside `memo_call`?", [
-    "Constant work: a property read, arithmetic, string formatting, or an object literal with a few static fields",
-    "Work over a collection that is typically small: one map, filter, or find",
-    "Work over a collection that may be large, or a sort, groupBy, or nested iteration",
-    "Heavy: parsing, regex over large text, recursive tree building, or a known-expensive library call",
+  cost: score("How much work does the computation inside `memo_call` do on each render?", [
+    "Constant work: a property read, arithmetic, string formatting, or an object or array literal with a fixed set of fields",
+    "Work over a collection whose size is bounded and visible here: an inline array literal, a tuple, or a fixed set of known keys",
+    "One pass (map, filter, find, reduce, Set/Map build) over a collection whose size is not bounded here, such as a prop or state array that could hold thousands of entries",
+    "More than one pass, or a sort, groupBy or nested iteration, over a collection whose size is not bounded here; or heavy parsing, regex over large text, or recursive tree building",
   ]),
   identity_matters: noul(
     "Does any consumer in `value_usages` depend on this value keeping the same reference across renders?",
@@ -58,13 +136,27 @@ export type MemoFacts = {
   unclassifiedUsages: number
   unclassifiedLines: number[]
   unresolvedCallees: string[]
+  /** The component's reactive inputs, computed statically. */
+  renderTriggers: string[]
+  /** True when some renders provably leave every dep unchanged. */
+  rendersWithUnchangedDeps: boolean
 }
 
 /* ── message ─────────────────────────────────────────────────────────────── */
 
+/**
+ * Keyed to the rubric levels above — update both together.
+ *
+ * Levels 2 and 3 are reachable here only through a bimodal answer whose mass
+ * stayed under the suppression bar. The phrasing must stay honest about that:
+ * we may still think the memo is pointless on identity grounds, but we must
+ * not tell an agent the work is small when the model said it is not.
+ */
 const COST_PHRASE: Record<number, string> = {
   0: "constant work",
-  1: "a single pass over a small collection",
+  1: "one pass over a collection whose size is fixed right here",
+  2: "one pass over a collection whose size is not bounded here",
+  3: "repeated or nested passes over a collection whose size is not bounded here",
 }
 
 function readsClause(binding: string, lines: readonly number[]): string {
@@ -133,6 +225,18 @@ function usageRows(slices: Slices): UsageRow[] {
       ? [{ line, kind: typeof kind === "string" ? kind : "other", resolved: resolved !== false }]
       : []
   })
+}
+
+/** Static, local and free — no question asks about it, so it never goes on the wire. */
+function dependencyCoverage(candidate: Candidate<TsTypes, MemoData>): {
+  rendersWithUnchangedDeps: boolean
+  renderTriggers: string[]
+} {
+  const coverage = coverageOf(candidate.node as CallExpression, candidate.unit as FunctionLike)
+  return {
+    rendersWithUnchangedDeps: coverage.rendersWithUnchangedDeps,
+    renderTriggers: coverage.triggers,
+  }
 }
 
 function unresolvedCalleeNames(slices: Slices): string[] {
@@ -211,6 +315,25 @@ export const pointlessUseMemo = defineRule<TsTypes, MemoData, MemoQuestions, Mem
     // Order matters (SPEC §3): weak evidence of legitimacy suppresses,
     // strong evidence of pointlessness reports.
     if (identityMatters > IDENTITY_MATTERS_MAX) return null
+
+    // A memo also earns its keep by skipping work on renders where its deps
+    // are unchanged. That is set arithmetic over facts we hold statically, so
+    // it is computed rather than asked — but it needs the cost answer, which
+    // is why it gates here rather than in `skip`.
+    // Most of the mass on "unbounded collection work" is evidence of
+    // legitimacy, and SPEC §3's asymmetry says weak evidence of legitimacy is
+    // enough to stay quiet. That does not become less true because the dep
+    // array happens to cover every input, so this gate is unconditional —
+    // and it stops us leaning on the fragile confidence band to catch
+    // bimodal answers.
+    const unboundedMass = unboundedWorkMass(answers.cost.probabilities)
+    if (unboundedMass > UNBOUNDED_WORK_MASS_MIN) return null
+
+    // Whether some renders provably leave every dep unchanged. Computed, not
+    // asked — and reported rather than gated on, for the reason recorded
+    // above the thresholds.
+    const coverage = dependencyCoverage(candidate)
+
     if (costScore > COST_MAX) return null
     if (costConfidence < MIN_CONFIDENCE) return null
 
@@ -219,7 +342,7 @@ export const pointlessUseMemo = defineRule<TsTypes, MemoData, MemoQuestions, Mem
     const facts: MemoFacts = {
       binding: candidate.data.binding?.getText() ?? "<unbound>",
       costScore,
-      costLevel: Math.round(costScore),
+      costLevel: costMode(answers.cost.probabilities, costScore),
       costConfidence,
       identityMatters,
       usageLines: [...new Set(rows.map((r) => r.line))].sort((a, b) => a - b),
@@ -228,6 +351,8 @@ export const pointlessUseMemo = defineRule<TsTypes, MemoData, MemoQuestions, Mem
       unclassifiedUsages: unclassified.length,
       unclassifiedLines: [...new Set(unclassified.map((r) => r.line))].sort((a, b) => a - b),
       unresolvedCallees: unresolvedCalleeNames(slices),
+      renderTriggers: coverage.renderTriggers,
+      rendersWithUnchangedDeps: coverage.rendersWithUnchangedDeps,
     }
 
     return { messageId: "pointlessUseMemo", message: buildMessage(facts), facts }

@@ -52,12 +52,6 @@ const WARN_CASES: readonly WarnCase[] = [
     contains: ["1 callee (slugify) unresolved across files — verify before removing"],
   },
   {
-    file: "should-warn/prop-callee.tsx",
-    line: 4,
-    column: 17,
-    contains: ["1 callee (transform) unresolved across files — verify before removing"],
-  },
-  {
     // Over-skip regression: `return show && <em/>` is the everyday render
     // guard — a truthiness test, not an escape from the component.
     file: "should-warn/logical-and-guard.tsx",
@@ -74,6 +68,14 @@ const WARN_CASES: readonly WarnCase[] = [
     column: 19,
     contains: ["`initial` is only read at line 5"],
     absent: ["verify before removing"],
+  },
+  {
+    // Guards the cost-rubric rewrite: a collection whose size is bounded in
+    // view is still level-1 work, and still a pointless memo.
+    file: "should-warn/bounded-literal.tsx",
+    line: 4,
+    column: 18,
+    contains: ["`values` is only read at line 5"],
   },
   {
     file: "should-warn/spread-usage.tsx",
@@ -163,11 +165,18 @@ describe("react/pointless-usememo — should-warn", () => {
     expect(usages[1]!.description).toBe("`label` passed as prop `title` to <span>")
   })
 
-  it("records a prop-bound callee as unresolved, never as its own name", async () => {
+  it("records a prop-bound callee as unresolved, and caveats the message", async () => {
+    // This fixture lives in should-stay-silent/ because the live model judges
+    // `transform(items)` as unbounded work. The caveat path it exercises is
+    // still needed, so it is asserted here on a mock that keeps it cheap.
     const { judge, calls } = createMockJudge(CHEAP)
-    await runFixture("should-warn/prop-callee.tsx", { judge })
+    const report = await runFixture("should-stay-silent/prop-callee.tsx", { judge })
 
     expect(calls[0]!.state["callee_sources"]).toEqual({ resolved: {}, unresolved: ["transform"] })
+    expect(report.findings.length).toBe(1)
+    expect(report.findings[0]!.message).toContain(
+      "1 callee (transform) unresolved across files — verify before removing",
+    )
   })
 })
 
@@ -256,6 +265,24 @@ interface SilentCase {
 }
 
 const SILENT_CASES: readonly SilentCase[] = [
+  {
+    // Live: score 1.30, mass 0.63, mode 2 — suppressed on mass.
+    file: "should-stay-silent/prop-callee.tsx",
+    script: () => ({
+      cost: { score: 1.3, probabilities: { "0": 0.35, "1": 0.02, "2": 0.6, "3": 0.03 } },
+      identity_matters: 0.11,
+    }),
+  },
+  {
+    // Bimodal: 55% "unbounded prop array", 0% "bounded right here", yet the
+    // expected score is 1.1 and rounds onto level 1. Deps equal the inputs,
+    // so the coverage gate cannot fire — mass alone must suppress this.
+    file: "should-stay-silent/bimodal-map.tsx",
+    script: () => ({
+      cost: { score: 1.1, probabilities: { "0": 0.45, "1": 0, "2": 0.55, "3": 0 } },
+      identity_matters: 0.1,
+    }),
+  },
   // Cost above COST_MAX — CALIBRATION.md case E.
   { file: "should-stay-silent/sort-and-group.tsx", script: () => ({ cost: 2.4, identity_matters: 0.1 }) },
   // Confidence below MIN_CONFIDENCE.
@@ -269,6 +296,81 @@ const SILENT_CASES: readonly SilentCase[] = [
     script: () => ({ cost: 0.1, identity_matters: 0.7 }),
   },
 ]
+
+describe("react/pointless-usememo — the FilterableList false positive", () => {
+  const FILE = "should-stay-silent/filterable-list.tsx"
+
+  /** Both memos at the same cost distribution, so only coverage differs. */
+  const atMass = (mass: number): MockScript => () => ({
+    cost: { score: 2 * mass, probabilities: { "0": 1 - mass, "1": 0, "2": mass, "3": 0 } },
+    identity_matters: 0.1,
+  })
+
+  it("reports neither memo on the judgment the live model actually gives", async () => {
+    const realistic: MockScript = (request) => {
+      const memo = request.state["memo_call"] as { source: string }
+      // Live: filter 2.02 mass 1.00, Set-build 2.09 mass 1.00.
+      const score = memo.source.includes(".filter(") ? 2.02 : 2.09
+      return {
+        cost: { score, probabilities: { "0": 0, "1": 0, "2": 0.95, "3": 0.05 } },
+        identity_matters: 0.1,
+      }
+    }
+    const { judge, calls } = createMockJudge(realistic)
+    const report = await runFixture(FILE, { judge })
+
+    expect(report.errors).toEqual([])
+    // Two candidates in one unit => two slots => two requests.
+    expect(calls.length).toBe(2)
+    expect(report.stats.candidates).toBe(2)
+    expect(report.stats.judged).toBe(2)
+    expect(report.findings).toEqual([])
+  })
+
+  // Only two outcomes remain to pin: below the mass bar everything reports,
+  // above it everything is silent. There is no longer a middle band — the
+  // coverage gate that used to occupy it was removed for want of a measured
+  // threshold (see the note above the thresholds in the rule).
+  it("below the mass bar, nothing suppresses either memo", async () => {
+    const { judge } = createMockJudge(atMass(0.2))
+    const report = await runFixture(FILE, { judge })
+    expect(report.findings.map((f) => f.facts["binding"]).sort()).toEqual([
+      "categories",
+      "filteredItems",
+    ])
+  })
+
+  it("above the mass bar, mass alone silences both", async () => {
+    const { judge } = createMockJudge(atMass(0.55))
+    const report = await runFixture(FILE, { judge })
+    expect(report.findings).toEqual([])
+  })
+
+  it("carries the statically computed inputs as facts, excluding the setters", async () => {
+    const { judge } = createMockJudge(atMass(0.2))
+    const report = await runFixture(FILE, { judge })
+    const byBinding = new Map(report.findings.map((f) => [f.facts["binding"], f.facts]))
+
+    for (const facts of byBinding.values()) {
+      expect(facts["renderTriggers"]).toEqual(["items", "searchTerm", "selectedCategory"])
+    }
+    // filteredItems depends on every input: no render provably skips it.
+    expect(byBinding.get("filteredItems")?.["rendersWithUnchangedDeps"]).toBe(false)
+    // categories depends on `items` alone, so typing in the search box
+    // re-renders with its dep unchanged. Reported, not gated on: the signal
+    // is carried in facts so it can be ablated later.
+    expect(byBinding.get("categories")?.["rendersWithUnchangedDeps"]).toBe(true)
+  })
+
+  it("keeps the render triggers off the wire", async () => {
+    const { judge, calls } = createMockJudge(atMass(0.2))
+    await runFixture(FILE, { judge })
+    for (const call of calls) {
+      const memo = call.state["memo_call"] as Record<string, unknown>
+      expect(Object.keys(memo).sort()).toEqual(["binding", "deps", "line", "source"])
+    }
+  })
+})
 
 describe("react/pointless-usememo — should-stay-silent (judged, not reported)", () => {
   it.each(SILENT_CASES)("$file reaches the model and reports nothing", async (testCase) => {

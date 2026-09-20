@@ -6,6 +6,7 @@ import type { FunctionLike } from "../../../adapters/typescript/types.js"
 import { unitOf } from "../../../adapters/typescript/units.js"
 import { escapesUnit } from "./escapes.js"
 import { comparingHookArgumentOf, hookArgumentOf, hookArgumentSemantics } from "./hooks.js"
+import { dependencyCoverage, renderTriggers } from "./render-triggers.js"
 import { classifyUsage } from "./usages.js"
 
 /** Parses a component body and returns every reference to `value`, plus its unit. */
@@ -137,6 +138,125 @@ describe("hook arguments — described always, skipped selectively", () => {
     const { refs } = passedTo("React.useState")
     expect(comparingHookArgumentOf(refs[0]!)).toBeNull()
     expect(comparingHookArgumentOf(passedTo("React.useQuery").refs[0]!)).toBe("React.useQuery")
+  })
+})
+
+describe("renderTriggers — the component's reactive inputs", () => {
+  function triggersOf(body: string): string[] {
+    const project = new Project({
+      useInMemoryFileSystem: true,
+      compilerOptions: { jsx: ts.JsxEmit.Preserve, allowJs: true, strict: false },
+    })
+    const source = project.createSourceFile(
+      "c.tsx",
+      `import { useState, useReducer, useContext, useRef, useMemo, useCallback } from "react"\n${body}\n`,
+    )
+    const fn = source.getFunctions()[0]!
+    return renderTriggers(fn)
+  }
+
+  it("collects destructured props", () => {
+    expect(triggersOf("function C({ items, searchTerm }) { return null }")).toEqual([
+      "items",
+      "searchTerm",
+    ])
+  })
+
+  it("collects a whole props parameter", () => {
+    expect(triggersOf("function C(props) { return null }")).toEqual(["props"])
+  })
+
+  it("takes the value from useState but never the setter", () => {
+    expect(triggersOf('function C(){ const [term, setTerm] = useState(""); return term }')).toEqual([
+      "term",
+    ])
+  })
+
+  it("takes the value from useReducer and the result of useContext", () => {
+    expect(
+      triggersOf("function C(){ const [s, d] = useReducer(r, 0); const t = useContext(Ctx); return [s, d, t] }"),
+    ).toEqual(["s", "t"])
+  })
+
+  it("ignores derived hooks: a ref is stable, a memo is not an input", () => {
+    expect(
+      triggersOf("function C(){ const r = useRef(1); const m = useMemo(()=>1,[]); const cb = useCallback(()=>1,[]); return [r,m,cb] }"),
+    ).toEqual([])
+  })
+
+  it("counts an unknown hook's result, which may differ each render", () => {
+    expect(triggersOf("function C(){ const rows = useQuery(k); return rows }")).toEqual(["rows"])
+  })
+
+  it("ignores a local function that merely shares a hook name", () => {
+    expect(
+      triggersOf("function C(){ const [v, setV] = useLocal(1); return v }\nfunction useLocal(x){ return [x, x] }"),
+      // Not React's useState, so we cannot tell which half is the stable
+      // setter: both count, which only ever widens the input set.
+    ).toEqual(["setV", "v"])
+  })
+
+  it("ignores declarations belonging to a nested callback", () => {
+    expect(
+      triggersOf('function C({ a }){ const f = () => { const [inner] = useState(0); return inner }; return f }'),
+    ).toEqual(["a"])
+  })
+})
+
+describe("dependencyCoverage — does the memo skip work on real renders?", () => {
+  function coverageOf(body: string) {
+    const project = new Project({
+      useInMemoryFileSystem: true,
+      compilerOptions: { jsx: ts.JsxEmit.Preserve, allowJs: true, strict: false },
+    })
+    const source = project.createSourceFile(
+      "c.tsx",
+      `import { useMemo, useState } from "react"\n${body}\n`,
+    )
+    const fn = source.getFunctions()[0]!
+    const call = fn
+      .getDescendantsOfKind(SyntaxKind.CallExpression)
+      .find((c) => c.getExpression().getText() === "useMemo")!
+    return dependencyCoverage(call, fn)
+  }
+
+  it("is true when an input is missing from the deps", () => {
+    const c = coverageOf(
+      'function C({ items }){ const [q, setQ] = useState(""); const x = useMemo(()=>items.map(f),[items]); return [x,q] }',
+    )
+    expect(c.triggers).toEqual(["items", "q"])
+    expect(c.rendersWithUnchangedDeps).toBe(true)
+  })
+
+  it("is false when the deps cover every input — that needs the caller", () => {
+    const c = coverageOf(
+      'function C({ items }){ const [q, setQ] = useState(""); const x = useMemo(()=>items.map(f),[items,q]); return [x,q] }',
+    )
+    expect(c.rendersWithUnchangedDeps).toBe(false)
+  })
+
+  it("is true for an empty dependency array in a component with inputs", () => {
+    const c = coverageOf("function C({ items }){ const x = useMemo(()=>heavy(),[]); return [x,items] }")
+    expect(c.rendersWithUnchangedDeps).toBe(true)
+  })
+
+  it("roots a member-access dep at its identifier", () => {
+    const c = coverageOf(
+      'function C({ data }){ const [q, setQ] = useState(""); const x = useMemo(()=>go(data.rows),[data.rows]); return [x,q] }',
+    )
+    expect(c.rendersWithUnchangedDeps).toBe(true)
+  })
+
+  it("declines to reason about a dep that is not an input", () => {
+    const c = coverageOf(
+      'function C({ items }){ const local = 1; const x = useMemo(()=>items.map(f),[local]); return x }',
+    )
+    expect(c.rendersWithUnchangedDeps).toBe(false)
+  })
+
+  it("declines when there is no dependency array at all", () => {
+    const c = coverageOf("function C({ items }){ const x = useMemo(()=>items.map(f)); return x }")
+    expect(c.rendersWithUnchangedDeps).toBe(false)
   })
 })
 
