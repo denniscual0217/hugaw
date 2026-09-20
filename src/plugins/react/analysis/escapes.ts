@@ -4,7 +4,14 @@ import { unitOf } from "../../../adapters/typescript/units.js"
 import type { FunctionLike } from "../../../adapters/typescript/types.js"
 import { accessChainRoot } from "./access.js"
 
-const SHORT_CIRCUIT = new Set(["??", "||", "&&"])
+/**
+ * `||` and `??` yield either operand, so `return value || fallback` really
+ * does hand the value out. `&&` yields its left operand only when that operand
+ * is falsy — `return isOpen && <Modal/>` is the everyday render guard, where
+ * the memo is a consumer being tested for truthiness, not an exit.
+ */
+const CARRIES_EITHER_OPERAND = new Set(["??", "||"])
+const CARRIES_RIGHT_OPERAND = new Set(["&&"])
 
 /**
  * Wrappers that carry a value outward without consuming it.
@@ -29,8 +36,12 @@ function carriesOutward(parent: Node, current: Node): boolean {
   if (Node.isConditionalExpression(parent)) {
     return parent.getWhenTrue() === current || parent.getWhenFalse() === current
   }
-  if (Node.isBinaryExpression(parent) && SHORT_CIRCUIT.has(parent.getOperatorToken().getText())) {
-    return parent.getLeft() === current || parent.getRight() === current
+  if (Node.isBinaryExpression(parent)) {
+    const operator = parent.getOperatorToken().getText()
+    if (CARRIES_EITHER_OPERAND.has(operator)) {
+      return parent.getLeft() === current || parent.getRight() === current
+    }
+    if (CARRIES_RIGHT_OPERAND.has(operator)) return parent.getRight() === current
   }
   return false
 }

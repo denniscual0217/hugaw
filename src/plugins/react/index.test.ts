@@ -58,6 +58,24 @@ const WARN_CASES: readonly WarnCase[] = [
     contains: ["1 callee (transform) unresolved across files — verify before removing"],
   },
   {
+    // Over-skip regression: `return show && <em/>` is the everyday render
+    // guard — a truthiness test, not an escape from the component.
+    file: "should-warn/logical-and-guard.tsx",
+    line: 4,
+    column: 16,
+    contains: ["`show` is only read at line 5"],
+    absent: ["verify before removing"],
+  },
+  {
+    // Over-skip regression: useState reads its initial value once on mount
+    // and never compares it, so the memo buys nothing.
+    file: "should-warn/usestate-initial.tsx",
+    line: 4,
+    column: 19,
+    contains: ["`initial` is only read at line 5"],
+    absent: ["verify before removing"],
+  },
+  {
     file: "should-warn/spread-usage.tsx",
     line: 4,
     column: 17,
@@ -175,6 +193,12 @@ const SKIP_CASES: readonly SkipCase[] = [
     reason: "listed in dependency array of useEffect",
   },
   { file: "should-skip/hook-argument.tsx", reason: "passed as an argument to hook useQuery" },
+  {
+    // A local `useState` is not React's: we must not assert React semantics
+    // about it, so it counts as an unknown hook and skips.
+    file: "should-skip/shadowed-hook.tsx",
+    reason: "passed as an argument to hook useState",
+  },
   {
     file: "should-skip/custom-hook-dep-array.tsx",
     reason: "listed in dependency array of useDebounced",

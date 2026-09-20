@@ -136,11 +136,20 @@ justified:
 | `passed as prop to React.memo component <X>` | identity is the whole point |
 | `listed in dependency array of <hook>` | identity drives the effect |
 | `used as context value on <Tag>` | identity drives every consumer |
-| `passed as an argument to hook <hook>` | hooks compare their inputs across renders |
+| `passed as an argument to hook <hook>` | the hook may compare its input across renders |
 
 Every positional check runs against the whole **access chain**, not the bare identifier:
 `useEffect(…, [data.items])` skips just as `[data]` does, because the field of a memoized
 object is fresh on every render once the memo is gone.
+
+The hook-argument skip is the one that needs care in both directions. React's own
+`useState`, `useRef` and `useReducer` read their argument once on mount, and the deps-driven
+hooks compare only their dependency array — a memo in those positions is pointless, so they
+are *excluded* from the skip and the slice states that semantics outright rather than
+letting the model infer it from a name. Everything else skips, including hooks we cannot
+resolve. Every one of those judgements is gated on the callee actually resolving to React's
+export: a local `function useState` shares the name and none of the behaviour, so it is
+treated as an unknown hook and skipped.
 
 Most legitimate `useMemo` dies here. Every check added to `skip` is a false positive that can
 never happen.

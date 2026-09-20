@@ -7,7 +7,7 @@ import { referencesWithin } from "../../../adapters/typescript/index.js"
 import { accessChainRoot } from "../analysis/access.js"
 import { contextValueTagOf, enclosingValueAttribute } from "../analysis/context.js"
 import { escapesUnit } from "../analysis/escapes.js"
-import { dependencyArrayHookOf, hookArgumentOf } from "../analysis/hooks.js"
+import { comparingHookArgumentOf, dependencyArrayHookOf } from "../analysis/hooks.js"
 import { isMemoComponentTag } from "../analysis/memo-components.js"
 import { isReactApi } from "../analysis/react-imports.js"
 import type { MemoData } from "./memo-data.js"
@@ -194,7 +194,7 @@ export const pointlessUseMemo = defineRule<TsTypes, MemoData, MemoQuestions, Mem
       if (tag !== null) return `used as context value on <${tag}>`
     }
     for (const reference of references) {
-      const hook = hookArgumentOf(reference)
+      const hook = comparingHookArgumentOf(reference)
       if (hook !== null) return `passed as an argument to hook ${hook}`
     }
     return null

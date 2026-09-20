@@ -1,7 +1,9 @@
-import { Node } from "ts-morph"
+import { Node, SyntaxKind } from "ts-morph"
 import type { Identifier } from "ts-morph"
 import { accessChainRoot } from "./access.js"
-import { dependencyArrayHookOf, hookArgumentOf } from "./hooks.js"
+import { dependencyArrayHookOf, hookArgumentOf, hookArgumentSemantics } from "./hooks.js"
+
+const LOGICAL_OPERATORS = new Set(["&&", "||", "??"])
 
 export type UsageKind =
   | "jsx-child"
@@ -86,7 +88,15 @@ export function classifyUsage(identifier: Identifier): Usage {
   }
 
   const argHook = hookArgumentOf(identifier)
-  if (argHook !== null) return usage("hook-argument", `${readAs} passed to the hook ${argHook}()`)
+  if (argHook !== null) {
+    const semantics = hookArgumentSemantics(identifier)
+    return usage(
+      "hook-argument",
+      semantics === null
+        ? `${readAs} passed to the hook ${argHook}()`
+        : `${readAs} passed to ${argHook}(), ${semantics}`,
+    )
+  }
 
   if (Node.isJsxExpression(parent)) {
     const grandparent = parent.getParent()
@@ -108,6 +118,26 @@ export function classifyUsage(identifier: Identifier): Usage {
   if (Node.isBinaryExpression(parent) && parent.getOperatorToken().getText() === "=") {
     if (parent.getRight() === root) {
       return usage("assigned", `${readAs} assigned to \`${parent.getLeft().getText()}\``)
+    }
+  }
+
+  // Truthiness tests consume the value without caring about its identity —
+  // the `isOpen && <Modal/>` render guard being the commonest React idiom.
+  if (Node.isConditionalExpression(parent) && parent.getCondition() === root) {
+    return usage("other", `${readAs} tested for truthiness as a condition`)
+  }
+  if (Node.isIfStatement(parent) && parent.getExpression() === root) {
+    return usage("other", `${readAs} tested for truthiness in an \`if\``)
+  }
+  if (Node.isPrefixUnaryExpression(parent)) {
+    return parent.getOperatorToken() === SyntaxKind.ExclamationToken
+      ? usage("other", `${readAs} negated with \`!\``)
+      : usage("other", `${readAs} used in arithmetic`)
+  }
+  if (Node.isBinaryExpression(parent)) {
+    const operator = parent.getOperatorToken().getText()
+    if (LOGICAL_OPERATORS.has(operator) && parent.getLeft() === root) {
+      return usage("other", `${readAs} tested for truthiness in a \`${operator}\` expression`)
     }
   }
 
