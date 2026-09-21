@@ -65,44 +65,45 @@ kept in the ablation file so this table can be re-derived, and nowhere else.
 
 | # | case | mode | mass | keepFam | runner-up | noul¹ | noul² |
 |---|---|---|---:|---:|---|---:|---:|
-| 1 | websocket chat room | `keep_effect` | 0.98 | **0.98** | external_store 0.02 | 0.44 | 0.93 |
-| 2 | online/offline mirror (SKILL.md §11) | `external_store` | 0.97 | **0.03** | mount_effect 0.02 | 0.28 | 0.61 |
-| 3 | setInterval clock | `keep_effect` | 0.74 | **0.94** | mount_effect 0.20 | 0.40 | 0.85 |
+| 1 | websocket chat room | `keep_effect` | 0.99 | **0.99** | external_store 0.01 | 0.44 | 0.94 |
+| 2 | online/offline mirror (SKILL.md §11) | `external_store` | 0.98 | **0.02** | mount_effect 0.01 | 0.27 | 0.59 |
+| 3 | setInterval clock | `keep_effect` | 0.64 | **0.91** | mount_effect 0.27 | 0.41 | 0.85 |
 | 4 | derived state (SKILL.md §1) | `render_computation` | 1.00 | **0.00** | — | 0.11 | 0.03 |
-| 5 | selection reset on `[items]` (SKILL.md §6) | `derive_by_id` | 0.96 | **0.00** | key_prop 0.04 | 0.12 | 0.03 |
+| 5 | selection reset on `[items]` (SKILL.md §6) | `derive_by_id` | 0.88 | **0.00** | key_prop 0.11 | 0.13 | 0.03 |
 | 6 | profile reset on `[userId]` (SKILL.md §5) | `key_prop` | 0.98 | **0.00** | use_linked_state 0.01 | 0.12 | 0.03 |
-| 7 | LikeButton flag (SKILL.md §4) | `event_handler` | 1.00 | **0.00** | — | 0.14 | 0.10 |
-| 8 | notify parent of a toggle (SKILL.md §8) | `notify_parent` | 1.00 | **0.00** | — | 0.14 | 0.06 |
-| 9 | child bubbles query data up (SKILL.md §9) | `lift_fetch` | 0.94 | **0.05** | effect_event 0.04 | 0.20 | 0.06 |
+| 7 | LikeButton flag (SKILL.md §4) | `event_handler` | 1.00 | **0.00** | — | 0.13 | 0.09 |
+| 8 | notify parent of a toggle (SKILL.md §8) | `notify_parent` | 1.00 | **0.00** | — | 0.13 | 0.05 |
+| 9 | child bubbles query data up (SKILL.md §9) | `lift_fetch` | 0.91 | **0.08** | effect_event 0.06 | 0.19 | 0.06 |
 | 10 | fetch on id change, callee cross-file (SKILL.md §3) | `data_library` | 0.95 | **0.04** | keep_effect 0.04 | 0.19 | 0.14 |
-| 11 | auth from storage on `[]` (SKILL.md §10) | `module_init` | 1.00 | **0.00** | — | 0.14 | 0.26 |
-| 12 | ResizeObserver on `[]`, writes width to state (SKILL.md §12) | `external_store` | 0.68 | **0.32** | mount_effect 0.20 | 0.49 | 0.87 |
-| 13 | `document.title` on `[title]` | `keep_effect` | 0.99 | **0.99** | render_computation 0.01 | 0.17 | 0.38 |
-| 14 | effect inside a custom hook — no parent, no props | `notify_parent` | 0.95 | **0.04** | keep_effect 0.02 | 0.16 | 0.07 |
-| 15 | no dependency array at all | `keep_effect` | 0.96 | **1.00** | mount_effect 0.04 | 0.21 | 0.80 |
-| 16 | `async` callback with `.then(setX)` | `data_library` | 0.93 | **0.05** | keep_effect 0.05 | 0.18 | 0.13 |
-| 17 | third-party widget on `[]`, no state written *(control for 12)* | `mount_effect` | 0.65 | **0.99** | keep_effect 0.33 | 0.46 | 0.92 |
+| 11 | auth from storage on `[]` (SKILL.md §10) | `module_init` | 0.99 | **0.01** | mount_effect 0.01 | 0.15 | 0.28 |
+| 12 | ResizeObserver on `[]`, writes width to state (SKILL.md §12) | `external_store` | 0.65 | **0.35** | mount_effect 0.22 | 0.45 | 0.88 |
+| 13 | `document.title` on `[title]` | `keep_effect` | 0.98 | **0.98** | render_computation 0.02 | 0.17 | 0.40 |
+| 14 | effect inside a custom hook — no parent, no props | `notify_parent` | 0.93 | **0.06** | keep_effect 0.03 | 0.17 | 0.06 |
+| 15 | no dependency array at all | `keep_effect` | 0.96 | **1.00** | mount_effect 0.04 | 0.22 | 0.81 |
+| 16 | `async` callback with `.then(setX)` | `data_library` | 0.96 | **0.04** | keep_effect 0.04 | 0.17 | 0.14 |
+| 17 | third-party widget on `[]`, no state written *(control for 12)* | `mount_effect` | 0.63 | **0.98** | keep_effect 0.34 | 0.44 | 0.92 |
 
-~4,600 input tokens per case, 78,675 for the run = **$0.0033**. Five runs across three payload
-revisions and two criteria revisions gave the same mode on all 17 cases, so these numbers are
-reproducible rather than a single sample. Run-to-run drift is within 0.03 except where noted
-under case 12 below.
+~4,350 input tokens per case, 73,877 for the run = **$0.0031**. Six runs across four payload
+revisions gave the same mode on all 17 cases, so these numbers are reproducible rather than a
+single sample. Run-to-run drift is within 0.03 except where noted under case 12 below.
 
-> **Re-measured 2026-09-21** after `use_linked_state` was added and `derive_by_id` rewritten.
-> The table above is the post-rewrite run; see "Editable state that follows a prop" below for
-> the before/after and for the one number that moved materially.
+> **Re-measured 2026-09-22** after the criteria collapsed from
+> `{description, evidence, contrast}` to one string per label. The words are unchanged — the
+> collapse is the three fields joined, verified byte for byte — so this run isolates the
+> effect of the *shape*. **No case changed mode**, and every case got exactly 308 tokens
+> cheaper: 4,654 -> 4,346 per request, 6.6% of the payload, for keys the model was not using.
 
 ### The thresholds, and the measurement behind each
 
 **`KEEP_FAMILY_MASS_MAX = 0.5`** — the gate. Sorted, the keep-family mass is:
 
 ```
-must be deleted (12)   0.00 ×6   0.03   0.04 ×2   0.05 ×2   0.32          ← max 0.32
-must be kept     (5)                          0.94   0.98   0.99 ×2   1.00   ← min 0.94
+must be deleted (12)   0.00 ×5   0.01   0.02   0.04 ×2   0.06   0.08   0.35          ← max 0.35
+must be kept     (5)                          0.91   0.98 ×2   0.99   1.00   ← min 0.91
 ```
 
-The six zeros are cases 4, 5, 6, 7, 8 and 11; the 0.32 is case 12, discussed below. Nothing
-lands between 0.32 and 0.94. 0.5 sits 0.18 above the highest delete and 0.44 below the lowest
+The 5 zeros are cases 4, 5, 6, 7 and 8; the 0.35 is case 12, discussed below. Nothing
+lands between 0.35 and 0.91. 0.5 sits 0.15 above the highest delete and 0.41 below the lowest
 keep, and every one of the 17 cases falls on the correct side. By analogy with
 `UNBOUNDED_WORK_MASS_MIN`, which is the same shape of decision on the memo rule.
 
@@ -182,14 +183,16 @@ looked up again, where free-typed text cannot be reconstructed from any id.
 Case 5 improved rather than degrading, which is the check that mattered: the neighbour whose
 mass the new option was most likely to take instead got sharper.
 
-**One number moved materially.** Case 12's keep-family mass went from 0.17 to 0.32 (0.35 and
-0.32 on two runs, so it is real and not drift), halving the clearance below the gate from 0.33
-to 0.18. Its mode is unchanged and still correct. Case 12 is the case already documented below
+**One number moved materially.** Case 12's keep-family mass went from 0.17 to the 0.32–0.35
+band (four runs since, so it is real and not drift), cutting the clearance below the gate from
+0.33 to 0.15. Its mode is unchanged and still correct. Case 12 is the case already documented below
 as genuinely ambiguous, and it is the one most sensitive to a change in the menu — adding a
 fourteenth option redistributes mass everywhere, and it lands hardest where the model was least
 certain to begin with. The threshold is unchanged: 0.18 of clearance below and 0.44 above is
 still a gap with nothing in it, and no case changed mode. It is recorded here because the next
-option added to this Choice should re-measure case 12 first.
+option added to this Choice should re-measure case 12 first — and the criteria collapse, which
+changed the payload's shape without changing a word, moved it no further than its own
+run-to-run band.
 
 ### Case 12 is not a miss
 

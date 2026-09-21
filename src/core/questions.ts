@@ -25,13 +25,21 @@ export interface NoulQuestion {
  * What one choice label's criterion may be.
  *
  * A plain string is the common case and stays the default reading. An object
- * is for a criterion with internal structure: a rule distinguishing a dozen
- * near-neighbour outcomes needs to say, per label, what it means, what
- * evidence in the state supports it, and which neighbour it is *not* — three
- * fields the model can weigh separately rather than one paragraph it must
- * parse. Widened here rather than per rule because `choice()` is the only way
- * a rule builds one, and a factory narrower than the type it returns would
- * force every such rule to cast around it.
+ * is for a criterion with internal structure.
+ *
+ * **Nothing uses the object form today, and the widening is kept
+ * deliberately.** It was added for `react/useeffect-alternatives`, whose
+ * fourteen options each carried `{description, evidence, contrast}` — on the
+ * theory that three fields could be weighed separately where one paragraph
+ * must be parsed. Measured, that was false: the same words with the keys
+ * removed gave identical answers and identical probabilities, on a plain case
+ * and on one built to match two options at once, while costing ~300 tokens a
+ * request. That rule now sends one string per label.
+ *
+ * The union stays because keeping it costs a type alias, while removing it is
+ * a core change the next rule might have to undo. But no new rule should
+ * reach for the object form without measuring that it buys something: the one
+ * rule that tried it measured that it did not.
  */
 export type ChoiceCriterion = string | JsonObject | null
 

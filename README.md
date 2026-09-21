@@ -361,6 +361,32 @@ array are carried as a fact and surface only as a `key={…}` suggestion on a mo
 never as "add it to the dependency array". It does not detect conditional hooks, does not
 report state mutation during render, and has no `--fix`.
 
+### Writing a criterion
+
+A `choice` option's criterion is **one string**, and a good one covers three things:
+
+1. **What the option means** — the fix, in the words someone would use to apply it.
+2. **What evidence in the payload answers it** — and *name the slice field*, so you cannot
+   ask for something the payload does not carry.
+3. **Which neighbouring option it is not** — and what would have made that neighbour win.
+
+The evidence habit is not style. An early version of the memo rule's cost rubric had a level
+reading "a collection that is typically small" — a size judgement against a payload that
+carried no size information anywhere. It matched `items.filter(...)` on a prop array and
+shipped a confident false positive on production code. Naming the field you are reasoning
+from makes that mistake visible while you are writing the criterion rather than after it
+ships.
+
+Write the three parts as one string. The structure is for the author, not the model: the
+same words as `{description, evidence, contrast}` and as a single block produce identical
+answers and identical probabilities — measured on a plain case and on one built to match two
+options at once — while the keys cost about 300 tokens per request. `ChoiceCriterion` in core
+still accepts an object, and there is a comment there explaining why it is kept and why you
+should not reach for it without measuring first.
+
+When rule options become configurable, `extends.replacements` will take a string per label,
+exactly like `context` does today.
+
 ## Development
 
 ```sh

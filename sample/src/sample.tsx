@@ -1,18 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
-function CategorySelect() {
-  const [category, setCategory] = useState("fruits");
-  const [subcategory, setSubcategory] = useState("apple");
+function Modal({ isOpen }) {
+  const inputRef = useRef(null);
 
   useEffect(() => {
-    if (category === "fruits") {
-      setSubcategory("apple");
-    } else if (category === "veggies") {
-      setSubcategory("carrot");
+    if (isOpen) {
+      inputRef.current?.focus();
     }
-  }, [category]);
+  }, [isOpen]);
 
-  return <div>{subcategory}</div>;
+  return isOpen ? <input ref={inputRef} /> : null;
 }
 
 // function Toggle({ onChange }) {
@@ -64,19 +61,19 @@ function CategorySelect() {
 //   return <input value={name} onChange={(e) => setName(e.target.value)} />;
 // }
 
-// export function Presence({ roomId }) {
-//   const [online, setOnline] = useState([]);
-//   useEffect(() => {
-//     const socket = new WebSocket(`/room/${roomId}`);
-//     socket.onmessage = (e) =>
-//       setOnline((prev) => [...prev, JSON.parse(e.data)]);
-//     return () => socket.close();
-//   }, [roomId]);
-//   return (
-//     <ul>
-//       {online.map((u) => (
-//         <li key={u.id}>{u.name}</li>
-//       ))}
-//     </ul>
-//   );
-// }
+export function Presence({ roomId }) {
+  const [online, setOnline] = useState([]);
+  useEffect(() => {
+    const socket = new WebSocket(`/room/${roomId}`);
+    socket.onmessage = (e) =>
+      setOnline((prev) => [...prev, JSON.parse(e.data)]);
+    return () => socket.close();
+  }, [roomId]);
+  return (
+    <ul>
+      {online.map((u) => (
+        <li key={u.id}>{u.name}</li>
+      ))}
+    </ul>
+  );
+}

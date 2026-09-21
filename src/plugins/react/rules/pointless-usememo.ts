@@ -117,7 +117,7 @@ const questions = {
       true:
         "Some consumer compares it by reference or keeps it beyond this render: a React.memo component, a hook dependency array, a context value, an explicit reference comparison, a ref or cache it is assigned to, or a custom hook returning it to callers this file cannot see",
       false:
-        "Every consumer only reads the value during this render — rendering it, reading a field, passing it to a plain function — so a fresh reference each render is harmless. A string, number or boolean has no reference identity at all, so this is always the case for a primitive",
+        "Every consumer only reads the value during this render (rendering it, reading a field, passing it to a plain function), so a fresh reference each render is harmless. A string, number or boolean has no reference identity at all, so this is always the case for a primitive",
     },
   ),
 }
