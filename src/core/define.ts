@@ -10,6 +10,9 @@ import type { QuestionSet } from "./questions.js"
 /** Slice names appear verbatim inside question text, so they must read as identifiers. */
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
 
+/** Keys the runner writes into every request state itself. */
+const RESERVED_STATE_KEYS = new Set(["project_notes"])
+
 export function defineRule<T extends LanguageTypes, D, Q extends QuestionSet, F extends Facts>(
   rule: Rule<T, D, Q, F>,
 ): Rule<T, D, Q, F> {
@@ -28,6 +31,11 @@ export function definePlugin<T extends LanguageTypes>(plugin: Plugin<T>): Plugin
     if (!IDENTIFIER.test(name)) {
       throw new TypeError(
         `definePlugin: slice name "${name}" in plugin "${plugin.id}" is not a valid identifier`,
+      )
+    }
+    if (RESERVED_STATE_KEYS.has(name)) {
+      throw new TypeError(
+        `definePlugin: slice name "${name}" in plugin "${plugin.id}" is reserved by the runner`,
       )
     }
   }

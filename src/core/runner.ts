@@ -30,6 +30,33 @@ type AnyCandidate = Candidate<any, any>
 export const NAMESPACE_SEPARATOR = "::"
 export const DEFAULT_CONCURRENCY = 8
 
+/**
+ * Where config-supplied project context lands in the request state.
+ *
+ * Not a slice: no plugin declares it and no rule lists it in `context`. It is
+ * core behaviour so that any future plugin gets it for free, and the name is
+ * reserved in `definePlugin` so a slice can never collide with it.
+ */
+export const NOTES_KEY = "project_notes"
+
+/** A state field the question never names tends to be ignored. */
+export const NOTES_CITATION = "Take `project_notes` into account."
+
+function withNotesCitation(question: Question): Question {
+  // Rules typically return a module-level question object, so this must copy
+  // rather than mutate — and must not append twice if a rule cites it itself.
+  if (question.instructions.includes(NOTES_CITATION)) return question
+  const instructions = `${question.instructions} ${NOTES_CITATION}`
+  switch (question.type) {
+    case "score":
+      return { ...question, instructions }
+    case "noul":
+      return { ...question, instructions }
+    case "choice":
+      return { ...question, instructions }
+  }
+}
+
 export interface RunInput {
   readonly config: ResolvedConfig
   readonly adapters: readonly LanguageAdapter<any, any>[]
@@ -424,13 +451,30 @@ export async function runLint(input: RunInput): Promise<RunReport> {
                 askFailed = true
                 break
               }
-              questions[`${enabled.ruleId}${NAMESPACE_SEPARATOR}${qid}`] = question
+              questions[`${enabled.ruleId}${NAMESPACE_SEPARATOR}${qid}`] =
+                enabled.notes === undefined ? question : withNotesCitation(question)
             }
             if (askFailed) break
             participants.push({ enabled, candidate, slices })
           }
           if (askFailed || participants.length === 0) continue
           if (Object.keys(questions).length === 0) continue
+
+          // One request batches several rules over one unit, so two rules with
+          // *different* notes would collide on a bare key. Namespace by rule
+          // id exactly as the questions are — but only when the notes actually
+          // differ: a top-level note shared by every rule is unambiguous as a
+          // plain string, and repeating it per rule would multiply its token
+          // cost for nothing.
+          const contributors = participants.filter((p) => p.enabled.notes !== undefined)
+          const distinct = new Set(contributors.map((p) => p.enabled.notes as string))
+          if (distinct.size === 1) {
+            state[NOTES_KEY] = [...distinct][0] as string
+          } else if (distinct.size > 1) {
+            const byRule: JsonObject = {}
+            for (const { enabled } of contributors) byRule[enabled.ruleId] = enabled.notes as string
+            state[NOTES_KEY] = byRule
+          }
 
           const suffix = bucketIndex === 0 ? "" : `.${bucketIndex}`
           const request: JudgeRequest = {

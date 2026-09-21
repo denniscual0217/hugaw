@@ -114,6 +114,47 @@ export default defineConfig({
 })
 ```
 
+### Project notes
+
+Some facts about a codebase no AST extractor can supply. `notes` is plain text that reaches
+the model as `project_notes`, set for every rule or for one:
+
+```ts
+export default defineConfig({
+  notes: "Components are wrapped by withMemo() at export; children compare props by reference.",
+  plugins: [react],
+  rules: {
+    "react/pointless-usememo": ["warn", { notes: "`rows` regularly exceeds 500 entries." }],
+  },
+})
+```
+
+Rule-level notes are appended to the top-level one, separated by a blank line. Whitespace-only
+notes are treated as absent. When one request batches several rules whose notes differ, the
+field is keyed by rule id; a note shared by every rule stays a plain string. Each contributing
+rule's questions gain a short `Take \`project_notes\` into account.` citation, because a state
+field no question names tends to be ignored.
+
+**Notes are not free.** They ride on every request for that rule, on top of a small fixture's
+~294-token questions and ~164-token state. Measured: a 140-character note added ~55 input
+tokens per request. Keep them short and specific.
+
+**They work, and they are worth measuring.** A note that answers the question being asked
+moves the verdict decisively; one that does not, does not:
+
+| case | note | before | after |
+| --- | --- | --- | --- |
+| prop to a non-memo child | components are memoized by an HOC | identity 0.16 → **warns** | identity 0.74 → silent |
+| prop to a non-memo child | project ships on Fridays | identity 0.16 → warns | identity 0.15 → **still warns** |
+| cross-file callee | that callee regexes the whole i18n bundle | cost 0.08 → **warns** | cost 2.97 → silent |
+| bounded literal | this component is on the scroll hot path | cost 0.90 → warns | cost 0.86 → **still warns** |
+
+The third row is the useful one: the MVP has no digest pass, so a cross-file callee with a
+reassuring name is judged cheap — the exact false positive `CALIBRATION.md` case C predicts.
+A note is the manual fix for it until the digest pass lands. The fourth row is the honest
+limit: the cost question asks how much work the computation does *per render*, so telling it
+the component renders often does not, and should not, change the answer.
+
 Listing a plugin turns its rules on at their `meta.defaultSeverity`; `"off"` disables one.
 Rule options are `message` and `messageSuffix` only — thresholds are module constants in the
 rule file, not config. `cache`, `limits` and `resolve` are accepted and type-checked but are

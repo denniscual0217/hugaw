@@ -54,7 +54,14 @@ export type { Cache } from "./cache.js"
 export { cacheKey, noopCache } from "./cache.js"
 
 export type { EnabledRule, HugawConfig, ResolvedConfig } from "./config.js"
-export { configSchema, defineConfig, knownRuleIds, resolveConfig, resolveRules } from "./config.js"
+export {
+  combineNotes,
+  configSchema,
+  defineConfig,
+  knownRuleIds,
+  resolveConfig,
+  resolveRules,
+} from "./config.js"
 
 export { applyMessageOptions, interpolate } from "./message.js"
 
@@ -70,4 +77,10 @@ export type {
 export { emptyStats, truncateFindings } from "./report.js"
 
 export type { RunInput } from "./runner.js"
-export { DEFAULT_CONCURRENCY, NAMESPACE_SEPARATOR, runLint } from "./runner.js"
+export {
+  DEFAULT_CONCURRENCY,
+  NAMESPACE_SEPARATOR,
+  NOTES_CITATION,
+  NOTES_KEY,
+  runLint,
+} from "./runner.js"

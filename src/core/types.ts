@@ -101,6 +101,12 @@ export type NumericSeverity = 1 | 2
 export interface RuleOptions<F extends Facts = Facts> {
   readonly message?: string | ((facts: F) => string)
   readonly messageSuffix?: string
+  /**
+   * Free-text project context the model should weigh — a fact about this
+   * codebase that no AST extractor could supply. Reaches the request state as
+   * `project_notes`; costs tokens on every request for the rule.
+   */
+  readonly notes?: string
 }
 
 export interface RuleMeta {

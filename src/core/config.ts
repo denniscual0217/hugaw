@@ -18,6 +18,8 @@ const ruleOptionsSchema = z.object({
     .union([z.string(), z.custom<(facts: never) => string>((v) => typeof v === "function")])
     .optional(),
   messageSuffix: z.string().optional(),
+  /** Free-text project context for this rule; reaches the model as `project_notes`. */
+  notes: z.string().optional(),
 })
 
 const ruleSettingSchema = z.union([severitySchema, z.tuple([severitySchema, ruleOptionsSchema])])
@@ -30,6 +32,8 @@ export const configSchema = z.looseObject({
   files: z.array(z.string()).default(["**/*.{ts,tsx}"]),
   ignores: z.array(z.string()).default(["**/node_modules/**", "**/dist/**"]),
   model: z.string().default("jev-1.13.0"),
+  /** Free-text project context for every rule. Rule-level notes are appended to it. */
+  notes: z.string().optional(),
   plugins: z.array(z.custom<Plugin>(isPlugin, { message: "not a hugaw plugin" })).default([]),
   adapters: z
     .array(z.custom<LanguageAdapter>(isAdapter, { message: "not a hugaw language adapter" }))
@@ -69,6 +73,19 @@ export interface EnabledRule<T extends LanguageTypes = LanguageTypes> {
   readonly plugin: Plugin<T>
   readonly severity: NumericSeverity
   readonly options: RuleOptions
+  /** Top-level and rule-level notes, already combined and trimmed. */
+  readonly notes?: string
+}
+
+/**
+ * Top-level first, then rule-specific, separated by a blank line. Whitespace-only
+ * notes are absent rather than empty, so they never reach a request.
+ */
+export function combineNotes(top?: string, rule?: string): string | undefined {
+  const parts = [top, rule]
+    .map((note) => note?.trim())
+    .filter((note): note is string => note !== undefined && note.length > 0)
+  return parts.length === 0 ? undefined : parts.join("\n\n")
 }
 
 function numeric(severity: Exclude<Severity, "off">): NumericSeverity {
@@ -99,7 +116,15 @@ export function resolveRules(config: ResolvedConfig, ruleFilter?: string): Enabl
       }
       if (severity === "off") continue
 
-      enabled.push({ ruleId, rule, plugin: plugin as Plugin, severity: numeric(severity), options })
+      const notes = combineNotes(config.notes, options.notes)
+      enabled.push({
+        ruleId,
+        rule,
+        plugin: plugin as Plugin,
+        severity: numeric(severity),
+        options,
+        ...(notes === undefined ? {} : { notes }),
+      })
     }
   }
   return enabled

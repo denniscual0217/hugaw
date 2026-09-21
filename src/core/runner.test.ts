@@ -8,11 +8,14 @@ import {
   fakeTextPlugin,
   resetSliceCalls,
   sliceCalls,
+  todoRule,
 } from "../../test/helpers/fake-language.js"
 import { createMockJudge } from "../../test/helpers/mock-judge.js"
+import { cacheKey } from "./cache.js"
+import type { JudgeRequest } from "./judge.js"
 import { resolveConfig } from "./config.js"
 import type { ResolvedConfig } from "./config.js"
-import { runLint } from "./runner.js"
+import { NOTES_CITATION, NOTES_KEY, runLint } from "./runner.js"
 
 let cwd: string
 
@@ -177,6 +180,125 @@ describe("runLint with a non-TypeScript language", () => {
     expect(report.findings.every((f) => f.ruleId === "fake/todo")).toBe(true)
     expect(report.findings[0]?.severity).toBe(2)
     expect(report.findings[0]?.message.endsWith("See docs/todo.md.")).toBe(true)
+  })
+
+  describe("project notes", () => {
+    const alphaRequest = (calls: readonly JudgeRequest[]): JudgeRequest =>
+      calls.find((c) => String(c.state["unit_text"]).includes("alpha"))!
+
+    it("sends nothing when no notes are configured", async () => {
+      const { judge, calls } = createMockJudge(() => ({ important: 0, urgency: 0 }))
+      await runLint({ config: config(), adapters: [fakeTextAdapter], judge, cwd })
+      for (const call of calls) {
+        expect(Object.hasOwn(call.state, NOTES_KEY)).toBe(false)
+        for (const question of Object.values(call.questions)) {
+          expect(question.instructions).not.toContain(NOTES_CITATION)
+        }
+      }
+    })
+
+    it("sends a top-level note to every rule", async () => {
+      const { judge, calls } = createMockJudge(() => ({ important: 0, urgency: 0 }))
+      await runLint({
+        config: config({ notes: "Ships to low-end Android." }),
+        adapters: [fakeTextAdapter],
+        judge,
+        cwd,
+      })
+      // Both rules carry the same note, so it stays a plain string.
+      expect(alphaRequest(calls).state[NOTES_KEY]).toBe("Ships to low-end Android.")
+      for (const question of Object.values(alphaRequest(calls).questions)) {
+        expect(question.instructions).toContain(NOTES_CITATION)
+      }
+    })
+
+    it("sends a rule-level note only to that rule", async () => {
+      const { judge, calls } = createMockJudge(() => ({ important: 0, urgency: 0 }))
+      await runLint({
+        config: config({ rules: { "fake/todo": ["warn", { notes: "TODOs are triaged weekly." }] } }),
+        adapters: [fakeTextAdapter],
+        judge,
+        cwd,
+      })
+      const request = alphaRequest(calls)
+      expect(request.state[NOTES_KEY]).toBe("TODOs are triaged weekly.")
+      // Only the rule that has notes gets the citation.
+      expect(request.questions["fake/todo::important"]!.instructions).toContain(NOTES_CITATION)
+      expect(request.questions["fake/fixme::urgency"]!.instructions).not.toContain(NOTES_CITATION)
+    })
+
+    it("concatenates top-level then rule-level, separated by a blank line", async () => {
+      const { judge, calls } = createMockJudge(() => ({ important: 0, urgency: 0 }))
+      await runLint({
+        config: config({
+          notes: "Ships to low-end Android.",
+          rules: { "fake/todo": ["warn", { notes: "TODOs are triaged weekly." }] },
+        }),
+        adapters: [fakeTextAdapter],
+        judge,
+        cwd,
+      })
+      // Two rules, different notes => namespaced by rule id.
+      expect(alphaRequest(calls).state[NOTES_KEY]).toEqual({
+        "fake/todo": "Ships to low-end Android.\n\nTODOs are triaged weekly.",
+        "fake/fixme": "Ships to low-end Android.",
+      })
+    })
+
+    it("treats a whitespace-only note as absent", async () => {
+      const { judge, calls } = createMockJudge(() => ({ important: 0, urgency: 0 }))
+      await runLint({
+        config: config({ notes: "   \n  " }),
+        adapters: [fakeTextAdapter],
+        judge,
+        cwd,
+      })
+      expect(Object.hasOwn(alphaRequest(calls).state, NOTES_KEY)).toBe(false)
+    })
+
+    it("cites the note exactly once per question", async () => {
+      const { judge, calls } = createMockJudge(() => ({ important: 0, urgency: 0 }))
+      await runLint({
+        config: config({ notes: "Ships to low-end Android." }),
+        adapters: [fakeTextAdapter],
+        judge,
+        cwd,
+      })
+      for (const call of calls) {
+        for (const question of Object.values(call.questions)) {
+          const occurrences = question.instructions.split(NOTES_CITATION).length - 1
+          expect(occurrences).toBe(1)
+        }
+      }
+    })
+
+    it("does not mutate the rule's own question objects", async () => {
+      const before = todoRule.ask({} as never)["important"]!.instructions
+      const { judge } = createMockJudge(() => ({ important: 0, urgency: 0 }))
+      await runLint({
+        config: config({ notes: "Ships to low-end Android." }),
+        adapters: [fakeTextAdapter],
+        judge,
+        cwd,
+      })
+      expect(todoRule.ask({} as never)["important"]!.instructions).toBe(before)
+      expect(before).not.toContain(NOTES_CITATION)
+    })
+
+    it("changes the cache key, because it is a different question", async () => {
+      const keys: string[] = []
+      for (const notes of [undefined, "Ships to low-end Android.", "Ships to desktop only."]) {
+        const { judge, calls } = createMockJudge(() => ({ important: 0, urgency: 0 }))
+        await runLint({
+          config: config(notes === undefined ? {} : { notes }),
+          adapters: [fakeTextAdapter],
+          judge,
+          cwd,
+        })
+        keys.push(cacheKey(alphaRequest(calls)))
+      }
+      expect(new Set(keys).size).toBe(3)
+    })
   })
 
   it("accumulates usage from the judge", async () => {
