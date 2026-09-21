@@ -21,7 +21,7 @@ const WARN_CASES: readonly WarnCase[] = [
     line: 8,
     column: 17,
     contains: [
-      "useMemo has no effect — constant work",
+      "useMemo has no effect: constant work",
       "`label` is only read at line 9",
       "inline the expression and remove the dep array",
     ],
@@ -49,7 +49,7 @@ const WARN_CASES: readonly WarnCase[] = [
     file: "should-warn/cross-file-callee.tsx",
     line: 5,
     column: 16,
-    contains: ["1 callee (slugify) unresolved across files — verify before removing"],
+    contains: ["1 callee (slugify) unresolved across files, verify before removing"],
   },
   {
     // Over-skip regression: `return show && <em/>` is the everyday render
@@ -109,7 +109,7 @@ const WARN_CASES: readonly WarnCase[] = [
     file: "should-warn/spread-usage.tsx",
     line: 4,
     column: 17,
-    contains: ["1 of 1 usages unresolved behind a spread — verify before removing"],
+    contains: ["1 of 1 usages unresolved behind a spread, verify before removing"],
   },
   {
     file: "should-warn/react-namespace.tsx",
@@ -121,7 +121,7 @@ const WARN_CASES: readonly WarnCase[] = [
     file: "should-warn/weak-identity-caveat.tsx",
     line: 4,
     column: 17,
-    contains: ["weak identity signal — verify no consumer compares references"],
+    contains: ["weak identity signal, verify no consumer compares references"],
     script: () => ({ cost: 0.1, identity_matters: 0.3 }),
   },
 ]
@@ -203,7 +203,7 @@ describe("react/pointless-usememo — should-warn", () => {
     expect(calls[0]!.state["callee_sources"]).toEqual({ resolved: {}, unresolved: ["transform"] })
     expect(report.findings.length).toBe(1)
     expect(report.findings[0]!.message).toContain(
-      "1 callee (transform) unresolved across files — verify before removing",
+      "1 callee (transform) unresolved across files, verify before removing",
     )
   })
 })
@@ -392,8 +392,8 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(finding.nodeType).toBe("CallExpression")
     expect({ line: finding.loc.line, column: finding.loc.column }).toEqual({ line: 6, column: 3 })
     expect(finding.message).toBe(
-      "useEffect should not exist — sets `filtered` from `products`; " +
-        "compute it during render — inside `useMemo` if the work is expensive — " +
+      "useEffect should not exist: sets `filtered` from `products`; " +
+        "compute it during render (use `useMemo` if the work is expensive) " +
         "and delete the state and the effect",
     )
     expect(finding.facts["keepFamilyMass"]).toBe(0)
@@ -457,7 +457,7 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(finding.message).toContain("calls `setTotal(…)` with `items`")
     expect(finding.message).toContain(
       "`setTotal` looks like a state setter but came from a `useState` that does not " +
-        "resolve to React's — check this file's imports before removing",
+        "resolve to React's, so check this file's imports before removing",
     )
     expect(finding.message).not.toContain("does nothing this rule can name")
     expect(finding.facts["statesWritten"]).toEqual([])
@@ -479,7 +479,7 @@ describe("react/useeffect-alternatives — should-warn", () => {
       "replace the effect and the `product` state with the project's data-fetching hook",
     )
     expect(message).toContain(
-      "1 callee (fetchProduct) unresolved across files — verify what they do before removing",
+      "1 callee (fetchProduct) unresolved across files, verify what it does before removing",
     )
   })
 

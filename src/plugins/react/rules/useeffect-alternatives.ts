@@ -141,12 +141,12 @@ const FIX_PHRASE: Record<string, (facts: EffectFacts, aside: boolean) => string>
   // been written without it — the clause comes out whole and nothing else
   // about the message moves.
   render_computation: (facts, aside) =>
-    `compute it during render${aside ? " — inside `useMemo` if the work is expensive —" : ""} ` +
+    `compute it during render${aside ? " (use `useMemo` if the work is expensive)" : ""} ` +
     `and delete ${describeWritten(facts, "the state and the effect", "the effect")}`,
   use_linked_state: (facts) => {
     const what = written(facts)
     return (
-      `keep it editable — replace ${what === null ? "the effect" : `the ${what} and the effect`} ` +
+      `keep it editable by replacing ${what === null ? "the effect" : `the ${what} and the effect`} ` +
       `with \`useLinkedState(${dep(facts)}, …)\`, which leaves the value alone until ` +
       `\`${dep(facts)}\` changes and recalculates it in the same render`
     )
@@ -295,7 +295,7 @@ export function wordCount(text: string): number {
 interface Budgeted {
   /** The parenthetical about when `useMemo` earns its keep. */
   readonly aside: boolean
-  /** "it may be worth keeping — verify before removing". */
+  /** "it may be worth keeping, so verify before removing". */
   readonly keepCaveat: boolean
   /** "or <the runner-up's fix>". */
   readonly alternative: boolean
@@ -332,7 +332,7 @@ export function buildMessage(facts: EffectFacts): string {
 function assemble(facts: EffectFacts, budget: Budgeted): string {
   const fix =
     FIX_PHRASE[facts.replacement]?.(facts, budget.aside) ?? "replace it with the primitive that fits"
-  let message = `useEffect should not exist — ${observationOf(facts)}; ${fix}`
+  let message = `useEffect should not exist: ${observationOf(facts)}; ${fix}`
 
   const alternative =
     budget.alternative &&
@@ -369,7 +369,7 @@ export function buildMountMessage(facts: EffectFacts): string {
 
 function assembleMount(facts: EffectFacts, rationale: boolean, key: boolean): string {
   const what = facts.externals.length > 0 ? ` with ${list(facts.externals)}` : ""
-  let message = `useEffect with [] is a mount-only sync${what} — wrap it in the project's \`useMountEffect\``
+  let message = `useEffect with [] is a mount-only sync${what}: wrap it in the project's \`useMountEffect\``
   if (rationale) message += " so the intent is explicit and the lint suppression lives in one place"
 
   const read = facts.readsOutsideDeps[0]
@@ -402,12 +402,12 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
     const n = facts.unresolvedCallees.length
     caveats.push(
       `${n} ${n === 1 ? "callee" : "callees"} (${facts.unresolvedCallees.join(", ")}) ` +
-        `unresolved across files — verify what they do before removing`,
+        `unresolved across files, verify what ${n === 1 ? "it does" : "they do"} before removing`,
     )
   }
   if (facts.callbackName !== null && !facts.callbackResolved) {
     caveats.push(
-      `the effect body is \`${facts.callbackName}\`, defined elsewhere — verify before removing`,
+      `the effect body is \`${facts.callbackName}\`, defined elsewhere, verify before removing`,
     )
   }
   // The write is named in the observation but not confirmed as React state,
@@ -417,8 +417,8 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
     caveats.push(
       `\`${facts.unresolvedWrites[0] as string}\` looks like a state setter but ` +
         (hook === null
-          ? "does not resolve to React state — verify before removing"
-          : `came from a \`${hook}\` that does not resolve to React's — check this file's imports before removing`),
+          ? "does not resolve to React state, so verify before removing"
+          : `came from a \`${hook}\` that does not resolve to React's, so check this file's imports before removing`),
     )
   }
   // Nothing was nameable at all. Saying so is the point: the fix below is the
@@ -429,7 +429,7 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
     facts.outwardCalls.length === 0 &&
     facts.externals.length === 0
   ) {
-    caveats.push("the effect's writes could not be resolved — verify before removing")
+    caveats.push("the effect's writes could not be resolved, so verify before removing")
   }
   if (
     keepRunnerUp &&
@@ -437,7 +437,7 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
     KEEP_FAMILY.has(facts.runnerUp) &&
     facts.runnerUpMass >= EITHER_OR_MIN
   ) {
-    caveats.push("it may be worth keeping — verify before removing")
+    caveats.push("it may be worth keeping, so verify before removing")
   }
   return caveats
 }

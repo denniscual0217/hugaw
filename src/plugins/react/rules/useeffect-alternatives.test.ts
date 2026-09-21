@@ -138,7 +138,7 @@ describe("the keep-family mass gate", () => {
     expect(verdict?.facts.keepFamilyMass).toBeCloseTo(0.47)
     // Still reported — 0.47 is under the bar — but the message flags that
     // keeping it is live, without publishing the number behind that.
-    expect(verdict?.message).toContain("it may be worth keeping — verify before removing")
+    expect(verdict?.message).toContain("it may be worth keeping, so verify before removing")
   })
 
   it("stays quiet on a keep-family mode even below the bar", () => {
@@ -276,7 +276,7 @@ const RICH_SLICES: Record<string, JsonValue> = {
 /** Every reportable label prints its own fix, and only its own. */
 const FIXES: [string, string][] = [
   ["render_computation", "compute it during render"],
-  ["use_linked_state", "keep it editable — replace the `isOn` state and the effect with `useLinkedState(isOn, …)`"],
+  ["use_linked_state", "keep it editable by replacing the `isOn` state and the effect with `useLinkedState(isOn, …)`"],
   ["derive_by_id", "keep only the id in state"],
   ["key_prop", "render `Toggle` with `key={isOn}`"],
   ["event_handler", "do that work in the handler that sets `isOn`"],
@@ -316,7 +316,7 @@ describe("one fix phrase per outcome", () => {
 describe("the observation clause is built from static facts alone", () => {
   it("names the state and where it came from", () => {
     expect(decide({ render_computation: 1 })?.message).toContain(
-      "useEffect should not exist — sets `filtered` from `products`;",
+      "useEffect should not exist: sets `filtered` from `products`;",
     )
   })
 
@@ -393,7 +393,7 @@ describe("the alternative clause", () => {
 
   it("turns a keep-family runner-up into a caveat, not a second fix", () => {
     const verdict = decide({ data_library: 0.85, keep_effect: 0.15 })
-    expect(verdict?.message).toContain("it may be worth keeping — verify before removing")
+    expect(verdict?.message).toContain("it may be worth keeping, so verify before removing")
     expect(verdict?.message).not.toContain("; or ")
   })
 
@@ -428,7 +428,7 @@ describe("caveats name the blind spot they actually found", () => {
       },
     )
     expect(verdict?.message).toContain(
-      "1 callee (fetchProduct) unresolved across files — verify what they do before removing",
+      "1 callee (fetchProduct) unresolved across files, verify what it does before removing",
     )
   })
 
@@ -438,7 +438,7 @@ describe("caveats name the blind spot they actually found", () => {
       { data: { callbackName: "syncTitle", callbackResolved: false } },
     )
     expect(verdict?.message).toContain(
-      "the effect body is `syncTitle`, defined elsewhere — verify before removing",
+      "the effect body is `syncTitle`, defined elsewhere, verify before removing",
     )
   })
 
@@ -573,7 +573,7 @@ describe("a write the payload could not confirm is state", () => {
     const verdict = decide({ render_computation: 1 }, { slices: UNCONFIRMED })
     expect(verdict?.message).toContain(
       "`setTotal` looks like a state setter but came from a `useState` that does not " +
-        "resolve to React's — check this file's imports before removing",
+        "resolve to React's, so check this file's imports before removing",
     )
   })
 
@@ -605,7 +605,7 @@ describe("an effect with nothing nameable in it", () => {
 
   it("says plainly that it cannot describe the effect", () => {
     expect(decide({ render_computation: 1 }, { slices: OPAQUE })?.message).toContain(
-      "useEffect should not exist — this rule cannot describe what it does",
+      "useEffect should not exist: this rule cannot describe what it does",
     )
   })
 
@@ -616,7 +616,7 @@ describe("an effect with nothing nameable in it", () => {
     const message = decide({ render_computation: 1 }, { slices: OPAQUE })?.message ?? ""
     expect(message).toContain("and delete the effect")
     expect(message).not.toContain("delete the state")
-    expect(message).toContain("the effect's writes could not be resolved — verify before removing")
+    expect(message).toContain("the effect's writes could not be resolved, so verify before removing")
   })
 
   it("never invents a state name for a fix that wants one", () => {
@@ -672,7 +672,7 @@ describe("the word budget", () => {
     // An infix, not a suffix: dropping it must leave the sentence exactly as
     // it would read had it never been written.
     expect(decide({ render_computation: 1 })?.message).toContain(
-      "compute it during render — inside `useMemo` if the work is expensive — " +
+      "compute it during render (use `useMemo` if the work is expensive) " +
         "and delete the state and the effect",
     )
   })
@@ -711,7 +711,7 @@ describe("the word budget", () => {
 
   it("keeps the keep-family caveat when it fits", () => {
     expect(decide({ render_computation: 0.85, keep_effect: 0.15 })?.message).toContain(
-      "it may be worth keeping — verify before removing",
+      "it may be worth keeping, so verify before removing",
     )
   })
 
@@ -796,5 +796,81 @@ describe("the mount message sheds its own clauses", () => {
     expect(verdict?.message).toContain("unresolved across files")
     expect(verdict?.message).not.toContain("pass `key=")
     expect(wordCount(verdict?.message ?? "")).toBeLessThanOrEqual(WORD_BUDGET)
+  })
+})
+
+/* ── punctuation that survives a monospace terminal ──────────────────────── */
+
+describe("no em-dash reaches a message", () => {
+  /**
+   * The em-dash had been doing three unrelated jobs — claim to observation,
+   * a bracketed aside, and caveat to instruction — so it signalled none of
+   * them. Rendered proportionally that is tolerable; in a terminal at 14px
+   * it is a row of minus signs the reader has to disambiguate. The output
+   * target is stdout, so each job now takes punctuation that survives it:
+   * `:` after the claim, `( … )` for an aside, `;` between clauses, `,` into
+   * an instruction.
+   */
+  const EVERY_CAVEAT: Record<string, JsonValue> = {
+    effect_call: {
+      line: 6,
+      endLine: 8,
+      source: "…",
+      deps: ["products"],
+      depsKind: "list",
+      hasCleanup: false,
+      callback: { name: "syncTitle", resolved: false },
+      readsOutsideDeps: ["label"],
+    },
+    effect_body: {
+      calls: [],
+      resolved: {},
+      unresolved: ["fetchProduct", "normalise"],
+      externals: ["window.localStorage"],
+    },
+  }
+
+  it("holds for every outcome, with and without the aside", () => {
+    for (const [label] of FIXES) {
+      for (const runnerUp of [null, "key_prop", "keep_effect"]) {
+        const probabilities =
+          runnerUp === null ? { [label]: 1 } : { [label]: 0.8, [runnerUp]: 0.2 }
+        const message = decide(probabilities, { slices: EVERY_CAVEAT })?.message ?? ""
+        expect(message, `${label}/${runnerUp}`).not.toContain("—")
+      }
+    }
+  })
+
+  it("holds for the mount message and its caveats", () => {
+    const message =
+      decide({ mount_effect: 0.9, keep_effect: 0.1 }, { slices: EVERY_CAVEAT })?.message ?? ""
+    expect(message).not.toContain("—")
+  })
+
+  it("holds for an effect nothing could be said about", () => {
+    const message =
+      decide(
+        { render_computation: 1 },
+        {
+          slices: {
+            component_state: { owner: { name: "T", kind: "component" }, props: [], state: [], hookResults: [] },
+            effect_body: { calls: [], resolved: {}, unresolved: [], externals: [] },
+          },
+        },
+      )?.message ?? ""
+    expect(message).not.toContain("—")
+  })
+
+  it("does not nest a bracket inside a bracket", () => {
+    // The aside is parenthesised and so is the callee list; they land in
+    // different clauses, and this is what keeps it that way.
+    const message =
+      decide({ render_computation: 1 }, { slices: EVERY_CAVEAT })?.message ?? ""
+    expect(message).not.toContain("((")
+    expect(message).not.toContain("))")
+  })
+
+  it("marks the claim with a colon", () => {
+    expect(decide({ render_computation: 1 })?.message).toMatch(/^useEffect should not exist: /)
   })
 })

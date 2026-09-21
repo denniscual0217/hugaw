@@ -22,7 +22,7 @@ function finding(overrides: Partial<Finding> = {}): Finding {
     severity: 1,
     messageId: "pointlessUseMemo",
     message:
-      "useMemo has no effect — constant work, and `label` is only read at line 3; inline the expression and remove the dep array",
+      "useMemo has no effect: constant work, and `label` is only read at line 3; inline the expression and remove the dep array",
     filePath: "/repo/src/Price.tsx",
     loc: { line: 2, column: 17, endLine: 2, endColumn: 40 },
     nodeType: "CallExpression",
@@ -41,7 +41,7 @@ describe("stylish", () => {
     expect(output).toBe(
       [
         "src/Price.tsx",
-        "  2:17  warning  useMemo has no effect — constant work, and `label` is only read at line 3; inline the expression and remove the dep array  react/pointless-usememo",
+        "  2:17  warning  useMemo has no effect: constant work, and `label` is only read at line 3; inline the expression and remove the dep array  react/pointless-usememo",
         "",
         "✖ 1 problem (0 errors, 1 warning)",
         "1 candidates, 0 skipped statically, 1 judged",

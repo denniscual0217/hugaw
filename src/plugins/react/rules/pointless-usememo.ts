@@ -177,7 +177,7 @@ function readsClause(binding: string, lines: readonly number[]): string {
 export function buildMessage(facts: MemoFacts): string {
   const phrase = COST_PHRASE[facts.costLevel] ?? "inexpensive work"
   let message =
-    `useMemo has no effect — ${phrase}, and ${readsClause(facts.binding, facts.usageLines)}; ` +
+    `useMemo has no effect: ${phrase}, and ${readsClause(facts.binding, facts.usageLines)}; ` +
     `inline the expression and remove the dep array`
 
   const caveats: string[] = []
@@ -185,25 +185,25 @@ export function buildMessage(facts: MemoFacts): string {
     const n = facts.unresolvedCallees.length
     caveats.push(
       `${n} ${n === 1 ? "callee" : "callees"} (${facts.unresolvedCallees.join(", ")}) ` +
-        `unresolved across files — verify before removing`,
+        `unresolved across files, verify before removing`,
     )
   }
   if (facts.spreadUsages > 0) {
     caveats.push(
-      `${facts.spreadUsages} of ${facts.usageCount} usages unresolved behind a spread — verify before removing`,
+      `${facts.spreadUsages} of ${facts.usageCount} usages unresolved behind a spread, verify before removing`,
     )
   }
   if (facts.unclassifiedUsages > 0) {
     const lines = facts.unclassifiedLines
     const where = lines.length === 0 ? "" : ` (line${lines.length === 1 ? "" : "s"} ${lines.join(", ")})`
     caveats.push(
-      `${facts.unclassifiedUsages} of ${facts.usageCount} usages could not be classified${where} — verify before removing`,
+      `${facts.unclassifiedUsages} of ${facts.usageCount} usages could not be classified${where}, verify before removing`,
     )
   }
   if (facts.identityMatters > IDENTITY_CAVEAT_MIN && facts.identityMatters <= IDENTITY_MATTERS_MAX) {
     // No percentage: this clause only exists inside the caveat band, so
     // "weak" is already the whole of what the number would have said.
-    caveats.push("weak identity signal — verify no consumer compares references")
+    caveats.push("weak identity signal, verify no consumer compares references")
   }
   for (const caveat of caveats) message += `; ${caveat}`
   return message

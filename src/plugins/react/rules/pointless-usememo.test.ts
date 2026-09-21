@@ -291,7 +291,7 @@ describe("pointless-usememo message", () => {
 
   it("matches the SPEC example", () => {
     expect(buildMessage(base)).toBe(
-      "useMemo has no effect — constant work, and `label` is only read at line 3; " +
+      "useMemo has no effect: constant work, and `label` is only read at line 3; " +
         "inline the expression and remove the dep array",
     )
   })
@@ -310,13 +310,13 @@ describe("pointless-usememo message", () => {
     expect(buildMessage(base)).not.toContain("verify before removing")
 
     expect(buildMessage({ ...base, unresolvedCallees: ["slugify"] })).toContain(
-      "1 callee (slugify) unresolved across files — verify before removing",
+      "1 callee (slugify) unresolved across files, verify before removing",
     )
     expect(buildMessage({ ...base, unresolvedCallees: ["a", "b"] })).toContain(
       "2 callees (a, b) unresolved across files",
     )
     expect(buildMessage({ ...base, usageCount: 5, spreadUsages: 2 })).toContain(
-      "2 of 5 usages unresolved behind a spread — verify before removing",
+      "2 of 5 usages unresolved behind a spread, verify before removing",
     )
     // A usage we simply could not place must not be reported as a spread.
     const unclassified = buildMessage({
@@ -326,13 +326,57 @@ describe("pointless-usememo message", () => {
       unclassifiedLines: [7],
     })
     expect(unclassified).toContain(
-      "1 of 3 usages could not be classified (line 7) — verify before removing",
+      "1 of 3 usages could not be classified (line 7), verify before removing",
     )
     expect(unclassified).not.toContain("behind a spread")
     expect(buildMessage({ ...base, identityMatters: 0.3 })).toContain(
-      "weak identity signal — verify no consumer compares references",
+      "weak identity signal, verify no consumer compares references",
     )
     // 0.2 and below is noise, not a blind spot.
     expect(buildMessage({ ...base, identityMatters: 0.2 })).not.toContain("weak identity signal")
+  })
+})
+
+const PLAIN: MemoFacts = {
+  binding: "label",
+  costScore: 0.1,
+  costLevel: 0,
+  costConfidence: 0.9,
+  identityMatters: 0.05,
+  usageLines: [3],
+  usageCount: 3,
+  spreadUsages: 0,
+  unclassifiedUsages: 0,
+  unclassifiedLines: [],
+  unresolvedCallees: [],
+  renderTriggers: [],
+  rendersWithUnchangedDeps: false,
+}
+
+describe("no em-dash reaches a message", () => {
+  // Same reason as the effect rule: the output target is a terminal, where a
+  // dash doing three different jobs reads as three minus signs.
+  it("holds across every caveat combination", () => {
+    for (const unresolvedCallees of [[], ["slugify"], ["slugify", "format"]]) {
+      for (const spreadUsages of [0, 2]) {
+        for (const unclassifiedUsages of [0, 1]) {
+          for (const identityMatters of [0.05, 0.3]) {
+            const message = buildMessage({
+              ...PLAIN,
+              unresolvedCallees,
+              spreadUsages,
+              unclassifiedUsages,
+              unclassifiedLines: unclassifiedUsages > 0 ? [7] : [],
+              identityMatters,
+            })
+            expect(message).not.toContain("—")
+          }
+        }
+      }
+    }
+  })
+
+  it("marks the claim with a colon", () => {
+    expect(buildMessage(PLAIN)).toMatch(/^useMemo has no effect: /)
   })
 })

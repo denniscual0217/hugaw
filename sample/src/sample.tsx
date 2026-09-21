@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 
-function App() {
-  useEffect(() => {
-    loadLocalStorageData();
-    checkAuthSession();
-  }, []);
+function CategorySelect() {
+  const [category, setCategory] = useState("fruits");
+  const [subcategory, setSubcategory] = useState("apple");
 
-  return <MainContent />;
+  useEffect(() => {
+    if (category === "fruits") {
+      setSubcategory("apple");
+    } else if (category === "veggies") {
+      setSubcategory("carrot");
+    }
+  }, [category]);
+
+  return <div>{subcategory}</div>;
 }
 
 // function Toggle({ onChange }) {
