@@ -1,0 +1,67 @@
+# tests/ — ESLint vs hugaw, same file
+
+**This is not the vitest suite.** That is `../test/`, and `pnpm test` from the repo
+root does not glob this directory (nor does `tsconfig.json`). This directory has its
+own `package.json` and its own `node_modules` so the ESLint plugin never becomes a
+dependency of hugaw itself.
+
+It exists to answer one question: on the same source, what does each tool find?
+
+## Run it
+
+```sh
+cd tests && npm install     # once
+npm run compare             # both tools, side by side
+```
+
+Or separately:
+
+```sh
+npm run eslint              # eslint-plugin-react-you-might-not-need-an-effect, all 9 rules
+npm run hugaw               # hugaw, react/useeffect-alternatives only
+```
+
+`npm run hugaw` needs `TYPESAFE_API_KEY` in the environment or in a `.env` beside it,
+and costs roughly $0.0006 per run (4 effects × ~3,600 tokens).
+
+## What `src/sample.tsx` is for
+
+Five effects, each chosen because it separates the two tools. Measured output as of
+2026-09-21:
+
+| # | component | ESLint plugin | hugaw |
+|---|---|---|---|
+| 1a | `TotalsInline` | reports (+ a spurious `no-pass-data-to-parent`) | reports |
+| 1b | `TotalsImported` | **silent** | reports, and flags the unread callee |
+| 2 | `ProductPage` | **silent** — no fetch rule exists | reports, names the data-library fix |
+| 3 | `NameField` | reports, **advice would break it** | reports, advice is also wrong |
+| 4 | `Presence` | silent (correct) | silent (correct) |
+
+**1a versus 1b is the whole difference in two components.** Identical shape, identical
+prop, identical setter — the only change is whether the value passes through an
+imported function. A rule that reads one file has to go quiet there; hugaw inlines
+same-file bodies into `effect_body.resolved` and reports cross-file ones as a blind
+spot in the message.
+
+**Case 2** is the canonical fetch-in-an-effect from the skill (races, no cancellation).
+The plugin ships no rule for it: `no-derived-state` needs the setter's *arguments* to
+trace back to props or state, and `.then(setProduct)` hands the setter over rather
+than calling it.
+
+**Case 3 is the honest one, and the reason this directory exists.** `name` is written
+both in the effect and in the change handler, so "compute it during render" deletes the
+user's ability to type. Both tools currently give breaking advice. hugaw carries the
+deciding evidence in its payload —
+
+```json
+"writes": [
+  { "line": 43, "within": "effect",  "argument": "user.name" },
+  { "line": 46, "within": "handler", "argument": "e.target.value" }
+]
+```
+
+— and still picks the wrong replacement (`use_linked_state` scores ~0 while
+`derive_by_id` takes the mode). That makes it a criteria-wording problem rather than a
+missing signal, and it is the next thing to fix.
+
+Bodies for 1b and 2 live in `src/_lib.ts` so the cross-file path is exercised.
