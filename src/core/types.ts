@@ -104,9 +104,12 @@ export interface RuleOptions<F extends Facts = Facts> {
   /**
    * Free-text project context the model should weigh — a fact about this
    * codebase that no AST extractor could supply. Reaches the request state as
-   * `project_notes`; costs tokens on every request for the rule.
+   * `context`; costs tokens on every request for the rule.
+   *
+   * Not to be confused with `Rule.context`, which is a rule author's list of
+   * slice names. This one is a config author's prose; they never meet.
    */
-  readonly notes?: string
+  readonly context?: string
 }
 
 export interface RuleMeta {

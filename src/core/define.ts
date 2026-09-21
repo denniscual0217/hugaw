@@ -11,7 +11,7 @@ import type { QuestionSet } from "./questions.js"
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** Keys the runner writes into every request state itself. */
-const RESERVED_STATE_KEYS = new Set(["project_notes"])
+const RESERVED_STATE_KEYS = new Set(["context"])
 
 export function defineRule<T extends LanguageTypes, D, Q extends QuestionSet, F extends Facts>(
   rule: Rule<T, D, Q, F>,

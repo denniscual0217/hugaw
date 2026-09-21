@@ -33,20 +33,20 @@ export const DEFAULT_CONCURRENCY = 8
 /**
  * Where config-supplied project context lands in the request state.
  *
- * Not a slice: no plugin declares it and no rule lists it in `context`. It is
- * core behaviour so that any future plugin gets it for free, and the name is
+ * Not a slice: no plugin declares it and no rule requests it. It is core
+ * behaviour so that any future plugin gets it for free, and the name is
  * reserved in `definePlugin` so a slice can never collide with it.
  */
-export const NOTES_KEY = "project_notes"
+export const CONTEXT_KEY = "context"
 
 /** A state field the question never names tends to be ignored. */
-export const NOTES_CITATION = "Take `project_notes` into account."
+export const CONTEXT_CITATION = "Take `context` into account."
 
-function withNotesCitation(question: Question): Question {
+function withContextCitation(question: Question): Question {
   // Rules typically return a module-level question object, so this must copy
   // rather than mutate — and must not append twice if a rule cites it itself.
-  if (question.instructions.includes(NOTES_CITATION)) return question
-  const instructions = `${question.instructions} ${NOTES_CITATION}`
+  if (question.instructions.includes(CONTEXT_CITATION)) return question
+  const instructions = `${question.instructions} ${CONTEXT_CITATION}`
   switch (question.type) {
     case "score":
       return { ...question, instructions }
@@ -452,7 +452,7 @@ export async function runLint(input: RunInput): Promise<RunReport> {
                 break
               }
               questions[`${enabled.ruleId}${NAMESPACE_SEPARATOR}${qid}`] =
-                enabled.notes === undefined ? question : withNotesCitation(question)
+                enabled.context === undefined ? question : withContextCitation(question)
             }
             if (askFailed) break
             participants.push({ enabled, candidate, slices })
@@ -461,19 +461,19 @@ export async function runLint(input: RunInput): Promise<RunReport> {
           if (Object.keys(questions).length === 0) continue
 
           // One request batches several rules over one unit, so two rules with
-          // *different* notes would collide on a bare key. Namespace by rule
-          // id exactly as the questions are — but only when the notes actually
-          // differ: a top-level note shared by every rule is unambiguous as a
+          // *different* context would collide on a bare key. Namespace by rule
+          // id exactly as the questions are — but only when the text actually
+          // differs: a top-level entry shared by every rule is unambiguous as a
           // plain string, and repeating it per rule would multiply its token
           // cost for nothing.
-          const contributors = participants.filter((p) => p.enabled.notes !== undefined)
-          const distinct = new Set(contributors.map((p) => p.enabled.notes as string))
+          const contributors = participants.filter((p) => p.enabled.context !== undefined)
+          const distinct = new Set(contributors.map((p) => p.enabled.context as string))
           if (distinct.size === 1) {
-            state[NOTES_KEY] = [...distinct][0] as string
+            state[CONTEXT_KEY] = [...distinct][0] as string
           } else if (distinct.size > 1) {
             const byRule: JsonObject = {}
-            for (const { enabled } of contributors) byRule[enabled.ruleId] = enabled.notes as string
-            state[NOTES_KEY] = byRule
+            for (const { enabled } of contributors) byRule[enabled.ruleId] = enabled.context as string
+            state[CONTEXT_KEY] = byRule
           }
 
           const suffix = bucketIndex === 0 ? "" : `.${bucketIndex}`

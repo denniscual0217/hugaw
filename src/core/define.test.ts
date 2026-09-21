@@ -46,9 +46,9 @@ describe("definePlugin slice names", () => {
   })
 
   it("rejects a slice that would collide with a key the runner writes", () => {
-    // `project_notes` is injected by the runner from config, not by a plugin.
+    // `context` is injected by the runner from config, not by a plugin.
     expect(() =>
-      definePlugin<FakeTypes>({ id: "p", language: "l", rules: [], slices: { project_notes: slice } }),
+      definePlugin<FakeTypes>({ id: "p", language: "l", rules: [], slices: { context: slice } }),
     ).toThrow(/reserved by the runner/)
   })
 })

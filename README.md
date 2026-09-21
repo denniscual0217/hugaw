@@ -114,35 +114,38 @@ export default defineConfig({
 })
 ```
 
-### Project notes
+### Project context
 
-Some facts about a codebase no AST extractor can supply. `notes` is plain text that reaches
-the model as `project_notes`, set for every rule or for one:
+Some facts about a codebase no AST extractor can supply. `context` is plain text that reaches
+the model as a `context` field in the request state, set for every rule or for one:
 
 ```ts
 export default defineConfig({
-  notes: "Components are wrapped by withMemo() at export; children compare props by reference.",
+  context: "This app ships to low-end Android devices.",
   plugins: [react],
   rules: {
-    "react/pointless-usememo": ["warn", { notes: "`rows` regularly exceeds 500 entries." }],
+    "react/pointless-usememo": ["warn", { context: "`cols` often exceeds 500 entries." }],
   },
 })
 ```
 
-Rule-level notes are appended to the top-level one, separated by a blank line. Whitespace-only
-notes are treated as absent. When one request batches several rules whose notes differ, the
-field is keyed by rule id; a note shared by every rule stays a plain string. Each contributing
-rule's questions gain a short `Take \`project_notes\` into account.` citation, because a state
-field no question names tends to be ignored.
+(A rule author's `Rule.context` is a different thing — the list of slice names a rule
+requests. They live in different types and never meet.)
 
-**Notes are not free.** They ride on every request for that rule, on top of a small fixture's
-~294-token questions and ~164-token state. Measured: a 140-character note added ~55 input
-tokens per request. Keep them short and specific.
+Rule-level context is appended to the top-level entry, separated by a blank line.
+Whitespace-only text is treated as absent. When one request batches several rules whose
+context differs, the field is keyed by rule id; text shared by every rule stays a plain
+string. Each contributing rule's questions gain a short `Take \`context\` into account.`
+citation, because a state field no question names tends to be ignored.
 
-**They work, and they are worth measuring.** A note that answers the question being asked
-moves the verdict decisively; one that does not, does not:
+**It is not free.** It rides on every request for that rule, on top of a small fixture's
+~294-token questions and ~164-token state. Measured: a 140-character entry added ~55 input
+tokens per request. Keep it short and specific.
 
-| case | note | before | after |
+**It works, and it is worth measuring.** Text that answers the question being asked moves the
+verdict decisively; text that does not, does not:
+
+| case | context | before | after |
 | --- | --- | --- | --- |
 | prop to a non-memo child | components are memoized by an HOC | identity 0.16 → **warns** | identity 0.74 → silent |
 | prop to a non-memo child | project ships on Fridays | identity 0.16 → warns | identity 0.15 → **still warns** |
@@ -151,7 +154,7 @@ moves the verdict decisively; one that does not, does not:
 
 The third row is the useful one: the MVP has no digest pass, so a cross-file callee with a
 reassuring name is judged cheap — the exact false positive `CALIBRATION.md` case C predicts.
-A note is the manual fix for it until the digest pass lands. The fourth row is the honest
+Context is the manual fix for it until the digest pass lands. The fourth row is the honest
 limit: the cost question asks how much work the computation does *per render*, so telling it
 the component renders often does not, and should not, change the answer.
 

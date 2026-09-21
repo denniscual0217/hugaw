@@ -55,7 +55,7 @@ export { cacheKey, noopCache } from "./cache.js"
 
 export type { EnabledRule, HugawConfig, ResolvedConfig } from "./config.js"
 export {
-  combineNotes,
+  combineContext,
   configSchema,
   defineConfig,
   knownRuleIds,
@@ -80,7 +80,7 @@ export type { RunInput } from "./runner.js"
 export {
   DEFAULT_CONCURRENCY,
   NAMESPACE_SEPARATOR,
-  NOTES_CITATION,
-  NOTES_KEY,
+  CONTEXT_CITATION,
+  CONTEXT_KEY,
   runLint,
 } from "./runner.js"
