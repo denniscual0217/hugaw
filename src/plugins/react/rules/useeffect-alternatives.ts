@@ -62,6 +62,16 @@ export type EffectFacts = {
   probabilities: Record<string, number>
   statesWritten: string[]
   setterInputs: string[]
+  /**
+   * Calls shaped like a state write that we could *not* confirm are one —
+   * `setTotal(…)` where the `useState` it came from is not React's, so the
+   * declaration never resolved. Named, never claimed: the observation may
+   * say the call happens, and no fix phrase may call it state.
+   */
+  unresolvedWrites: string[]
+  unresolvedWriteInputs: string[]
+  /** The hook such a write came out of, when it came from one at all. */
+  unresolvedWriteHook: string | null
   propCallbacksCalled: string[]
   outwardCalls: string[]
   externals: string[]
@@ -125,13 +135,22 @@ export function summariseChoice(
  * reported through this message; `mount_effect` has its own message with the
  * opposite gate direction.
  */
-const FIX_PHRASE: Record<string, (facts: EffectFacts) => string> = {
-  render_computation: () =>
-    "compute it during render — inside `useMemo` if the work is expensive — and delete the state and the effect",
-  use_linked_state: (facts) =>
-    `keep it editable — replace the \`${state(facts)}\` state and the effect with ` +
-    `\`useLinkedState(${dep(facts)}, …)\`, which leaves the value alone until \`${dep(facts)}\` ` +
-    "changes and recalculates it in the same render",
+const FIX_PHRASE: Record<string, (facts: EffectFacts, aside: boolean) => string> = {
+  // The only phrase that takes the budget's `aside` flag. It is an infix, not
+  // a suffix, so dropping it leaves the sentence exactly as it would have
+  // been written without it — the clause comes out whole and nothing else
+  // about the message moves.
+  render_computation: (facts, aside) =>
+    `compute it during render${aside ? " — inside `useMemo` if the work is expensive —" : ""} ` +
+    `and delete ${describeWritten(facts, "the state and the effect", "the effect")}`,
+  use_linked_state: (facts) => {
+    const what = written(facts)
+    return (
+      `keep it editable — replace ${what === null ? "the effect" : `the ${what} and the effect`} ` +
+      `with \`useLinkedState(${dep(facts)}, …)\`, which leaves the value alone until ` +
+      `\`${dep(facts)}\` changes and recalculates it in the same render`
+    )
+  },
   derive_by_id: () =>
     "keep only the id in state, derive the value during render, and delete the effect",
   key_prop: (facts) =>
@@ -139,27 +158,70 @@ const FIX_PHRASE: Record<string, (facts: EffectFacts) => string> = {
       ? `delete it and give the component that calls \`${facts.owner}\` a \`key={${dep(facts)}}\` so React remounts it`
       : `delete it and render \`${facts.owner}\` with \`key={${dep(facts)}}\` so React remounts it`,
   event_handler: (facts) =>
-    `do that work in the handler that sets \`${dep(facts)}\` and delete the flag state and the effect`,
+    `do that work in the handler that sets \`${dep(facts)}\` and delete ` +
+    `${describeWritten(facts, "the flag state and the effect", "the effect")}`,
   collapse_to_handler: (facts) =>
     `compute the whole next state in the handler that sets \`${dep(facts)}\` and delete the effect`,
-  notify_parent: (facts) =>
-    `call \`${facts.propCallbacksCalled[0] ?? "the callback"}(next)\` in the handler that sets \`${state(facts)}\` and delete the effect`,
+  notify_parent: (facts) => {
+    const name = stateName(facts)
+    const where = name === null ? "the handler that sets it" : `the handler that sets \`${name}\``
+    return `call \`${facts.propCallbacksCalled[0] ?? "the callback"}(next)\` in ${where} and delete the effect`
+  },
   lift_fetch: (facts) =>
     `move the query to the parent and pass the data down as a prop instead of up through \`${facts.propCallbacksCalled[0] ?? "the callback"}\``,
-  data_library: (facts) =>
-    `replace the effect and the \`${state(facts)}\` state with the project's data-fetching hook for this request`,
-  external_store: (facts) =>
-    `replace the \`${state(facts)}\` state and the effect with \`useSyncExternalStore(subscribe, getSnapshot)\` over ${facts.externals[0] === undefined ? "the source" : `\`${facts.externals[0]}\``}`,
+  data_library: (facts) => {
+    const what = written(facts)
+    return (
+      `replace the effect${what === null ? "" : ` and the ${what}`} ` +
+      "with the project's data-fetching hook for this request"
+    )
+  },
+  external_store: (facts) => {
+    const what = written(facts)
+    const over = facts.externals[0] === undefined ? "the source" : `\`${facts.externals[0]}\``
+    return (
+      `replace ${what === null ? "the effect" : `the ${what} and the effect`} ` +
+      `with \`useSyncExternalStore(subscribe, getSnapshot)\` over ${over}`
+    )
+  },
   module_init: () =>
     "move it to module scope, or guard it with a module-level flag, so it runs once per page load rather than once per mount",
+}
+
+/**
+ * `whenKnown` only when React state was actually observed.
+ *
+ * A setter-shaped call we could not resolve is *not* evidence of state. It
+ * was briefly treated as such here, on the grounds that a write was clearly
+ * happening — but "something is written" and "this is React state you may
+ * delete" are different claims, and only the second licenses the advice.
+ */
+function describeWritten(facts: EffectFacts, whenKnown: string, whenUnknown: string): string {
+  return facts.statesWritten.length > 0 ? whenKnown : whenUnknown
 }
 
 function dep(facts: EffectFacts): string {
   return facts.deps[0] ?? "that value"
 }
 
-function state(facts: EffectFacts): string {
-  return facts.statesWritten[0] ?? "local"
+/**
+ * What the effect writes, as the fix may refer to it — or null when we never
+ * established that it writes anything.
+ *
+ * The old version returned the string `"local"` when nothing was known, which
+ * is how a finding came to advise replacing "the `local` state" of a
+ * component that has no such thing. A fabricated name in the one clause an
+ * agent acts on is worse than no clause: there is nothing in the output to
+ * suggest it was invented.
+ */
+function written(facts: EffectFacts): string | null {
+  const state = facts.statesWritten[0]
+  return state === undefined ? null : `\`${state}\` state`
+}
+
+/** The state name a fix phrase can address, or null. Never a placeholder. */
+function stateName(facts: EffectFacts): string | null {
+  return facts.statesWritten[0] ?? null
 }
 
 function list(items: readonly string[]): string {
@@ -184,6 +246,17 @@ export function observationOf(facts: EffectFacts): string {
   const parts: string[] = []
   if (facts.externals.length > 0) parts.push(`touches ${list(facts.externals)}`)
   if (facts.outwardCalls.length > 0) parts.push(`calls ${list(facts.outwardCalls)}`)
+  // A write we could not confirm is state is still a write we watched happen.
+  // Phrased as the call it is, so the sentence stays true even when
+  // `component_state` came back empty.
+  if (facts.unresolvedWrites.length > 0) {
+    const call = `calls ${list(facts.unresolvedWrites.map((name) => `${name}(…)`))}`
+    parts.push(
+      facts.unresolvedWriteInputs.length > 0
+        ? `${call} with ${list(facts.unresolvedWriteInputs)}`
+        : call,
+    )
+  }
   if (facts.statesWritten.length > 0) {
     parts.push(
       facts.setterInputs.length > 0
@@ -191,36 +264,117 @@ export function observationOf(facts: EffectFacts): string {
         : `sets ${list(facts.statesWritten)}`,
     )
   }
-  if (parts.length === 0) return "it does nothing this rule can name"
+  if (parts.length === 0) return "this rule cannot describe what it does"
   return parts.join(" and ")
 }
 
+/**
+ * A budget, because the message *is* the product (SPEC §0).
+ *
+ * Findings had drifted to 58 words, stacking a fix, an aside, an either/or
+ * and two caveats onto one line; the memo rule sits at 23 and reads fine.
+ * Over budget, whole clauses are dropped in a fixed order of expendability.
+ * Never truncated mid-sentence — a half-finished instruction is worse than a
+ * missing one — and never at the cost of a clause that changes what the
+ * reader does next.
+ */
+export const WORD_BUDGET = 35
+
+export function wordCount(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+/**
+ * The three clauses the budget may take, in the order it takes them.
+ *
+ * `keepCaveat` and `alternative` are mutually exclusive in practice: both are
+ * built from the single runner-up, and it is either in the keep family or it
+ * is not. The order between them still matters for reading the code, but only
+ * one of the two is ever present to drop.
+ */
+interface Budgeted {
+  /** The parenthetical about when `useMemo` earns its keep. */
+  readonly aside: boolean
+  /** "model gave N% to keeping it". */
+  readonly keepCaveat: boolean
+  /** "or (N%) <the runner-up's fix>". */
+  readonly alternative: boolean
+}
+
+/**
+ * Least useful first.
+ *
+ * The aside is a general truth about `useMemo` that a React developer
+ * already holds; the keep caveat is a hedge on a finding we decided to
+ * report; the alternative is a second fix for a case the first one already
+ * covers. What is deliberately absent from this list: the fix itself, and an
+ * unresolved-callee caveat — that one names code the reader cannot see, and
+ * dropping it would turn "verify this first" into silence.
+ */
+const DROP_ORDER: readonly Budgeted[] = [
+  { aside: true, keepCaveat: true, alternative: true },
+  { aside: false, keepCaveat: true, alternative: true },
+  { aside: false, keepCaveat: false, alternative: true },
+  { aside: false, keepCaveat: false, alternative: false },
+]
+
 export function buildMessage(facts: EffectFacts): string {
-  const fix = FIX_PHRASE[facts.replacement]?.(facts) ?? "replace it with the primitive that fits"
+  let message = ""
+  for (const budget of DROP_ORDER) {
+    message = assemble(facts, budget)
+    if (wordCount(message) <= WORD_BUDGET) return message
+  }
+  // Everything expendable is gone and it is still long: what is left is
+  // load-bearing, and a shorter message would be a less useful one.
+  return message
+}
+
+function assemble(facts: EffectFacts, budget: Budgeted): string {
+  const fix =
+    FIX_PHRASE[facts.replacement]?.(facts, budget.aside) ?? "replace it with the primitive that fits"
   let message = `useEffect should not exist — ${observationOf(facts)}; ${fix}`
 
   const alternative =
+    budget.alternative &&
     facts.runnerUp !== null &&
     facts.runnerUpMass >= EITHER_OR_MIN &&
     !KEEP_FAMILY.has(facts.runnerUp) &&
     FIX_PHRASE[facts.runnerUp] !== undefined
-      ? FIX_PHRASE[facts.runnerUp]?.(facts)
+      // The alternative never carries the aside: it is already the clause
+      // most likely to be dropped, and a parenthetical inside it would be
+      // the first thing to go anyway.
+      ? FIX_PHRASE[facts.runnerUp]?.(facts, false)
       : null
   if (alternative) message += `; or (${percent(facts.runnerUpMass)}) ${alternative}`
 
-  for (const caveat of caveatsOf(facts, true)) message += `; ${caveat}`
+  for (const caveat of caveatsOf(facts, budget.keepCaveat)) message += `; ${caveat}`
   return message
 }
 
 export function buildMountMessage(facts: EffectFacts): string {
+  // Same budget, same principle. The rationale for wrapping goes first — a
+  // reader who is being told to use `useMountEffect` can infer why — then
+  // the `key` aside, which is a suggestion rather than the fix. The wrap
+  // itself and any unresolved-callee caveat always stay.
+  for (const [rationale, key] of [
+    [true, true],
+    [false, true],
+    [false, false],
+  ] as const) {
+    const message = assembleMount(facts, rationale, key)
+    if (wordCount(message) <= WORD_BUDGET) return message
+  }
+  return assembleMount(facts, false, false)
+}
+
+function assembleMount(facts: EffectFacts, rationale: boolean, key: boolean): string {
   const what = facts.externals.length > 0 ? ` with ${list(facts.externals)}` : ""
-  let message =
-    `useEffect with [] is a mount-only sync${what} — wrap it in the project's \`useMountEffect\` ` +
-    `so the intent is explicit and the lint suppression lives in one place`
-  if (facts.readsOutsideDeps.length > 0) {
-    const read = facts.readsOutsideDeps[0] as string
-    message +=
-      `; it also reads \`${read}\`, so pass \`key={${read}}\` at the call site if that should restart it`
+  let message = `useEffect with [] is a mount-only sync${what} — wrap it in the project's \`useMountEffect\``
+  if (rationale) message += " so the intent is explicit and the lint suppression lives in one place"
+
+  const read = facts.readsOutsideDeps[0]
+  if (key && read !== undefined) {
+    message += `; it also reads \`${read}\`, so pass \`key={${read}}\` at the call site if that should restart it`
   }
   // No keep-family caveat here: this finding *is* "keep it, wrapped", so
   // "the model gave 33% to keeping it" would argue against nothing.
@@ -242,6 +396,27 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
     caveats.push(
       `the effect body is \`${facts.callbackName}\`, defined elsewhere — verify before removing`,
     )
+  }
+  // The write is named in the observation but not confirmed as React state,
+  // so the fix that follows is reasoning about something we could not see.
+  if (facts.statesWritten.length === 0 && facts.unresolvedWrites.length > 0) {
+    const hook = facts.unresolvedWriteHook
+    caveats.push(
+      `\`${facts.unresolvedWrites[0] as string}\` looks like a state setter but ` +
+        (hook === null
+          ? "does not resolve to React state — verify before removing"
+          : `came from a \`${hook}\` that does not resolve to React's — check this file's imports before removing`),
+    )
+  }
+  // Nothing was nameable at all. Saying so is the point: the fix below is the
+  // model's, and the evidence for it is not in this message.
+  if (
+    facts.statesWritten.length === 0 &&
+    facts.unresolvedWrites.length === 0 &&
+    facts.outwardCalls.length === 0 &&
+    facts.externals.length === 0
+  ) {
+    caveats.push("the effect's writes could not be resolved — verify before removing")
   }
   if (
     keepRunnerUp &&
@@ -265,6 +440,8 @@ interface BodyCallRow {
   readonly kind: string
   readonly arguments: string
   readonly inputs: string[]
+  /** For `hook-result`: the hook the callee came out of. */
+  readonly via: string | null
 }
 
 function object(value: JsonValue | undefined): Record<string, JsonValue> {
@@ -289,6 +466,7 @@ function bodyCallRows(slices: Slices): BodyCallRow[] {
             kind: row["kind"],
             arguments: typeof row["arguments"] === "string" ? row["arguments"] : "",
             inputs: strings(row["inputs"]),
+            via: typeof row["via"] === "string" ? row["via"] : null,
           },
         ]
       : []
@@ -345,6 +523,15 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
     const names = stateNames(slices)
 
     const setterCalls = rows.filter((row) => row.kind === "state-setter")
+    // A call shaped like a state write that we could not confirm is one. The
+    // usual cause is a `useState` that does not resolve to React's — an
+    // unimported one, or a local function sharing the name — which leaves
+    // `component_state.state` empty and the write classified by whatever it
+    // did resolve to. The information is still real; only the claim "this is
+    // React state" is not.
+    const unconfirmed = rows.filter(
+      (row) => row.kind !== "state-setter" && WRITE_NAME.test(row.callee),
+    )
     // `fetchProduct(id).then(setProduct)` writes `product` without ever
     // calling the setter here, so a setter *handed to* something counts too.
     // Without this the canonical data-fetching finding offers to replace
@@ -371,12 +558,15 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
         ),
       ),
       setterInputs: unique(setterCalls.flatMap((row) => row.inputs)),
+      unresolvedWrites: unique(unconfirmed.map((row) => row.callee)),
+      unresolvedWriteInputs: unique(unconfirmed.flatMap((row) => row.inputs)),
+      unresolvedWriteHook: unconfirmed.find((row) => row.via !== null)?.via ?? null,
       propCallbacksCalled: unique(
         rows.filter((row) => row.kind === "prop-callback").map((row) => row.callee),
       ),
       outwardCalls: unique(
         rows
-          .filter((row) => OUTWARD_KINDS.has(row.kind))
+          .filter((row) => NAMEABLE_KINDS.has(row.kind) && !WRITE_NAME.test(row.callee))
           .map((row) => `${row.callee}(${row.arguments})`),
       ),
       externals: strings(object(slices["effect_body"])["externals"]),
@@ -407,8 +597,16 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
   },
 })
 
+/** `setX(…)` / `dispatch(…)` — the shape of a write, whatever it resolved to. */
+const WRITE_NAME = /^(?:set[A-Z]|dispatch)/
+
 /**
- * Call kinds that reach out of the component rather than back into React.
+ * Call kinds the observation clause can name.
+ *
+ * `prop-callback` is included: calling the parent's callback is the whole of
+ * what a `notify_parent` effect does, and leaving it out was why such a
+ * finding described itself as doing "nothing this rule can name" — on a file
+ * that compiles perfectly.
  *
  * `member` is deliberately absent. It is the kind that cannot tell
  * `connection.on("message", …)` from `products.filter(p => p.inStock)` — a
@@ -419,7 +617,7 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
  * `externals` as well, and the chained half of `fetchProduct(id).then(…)` is
  * already named by its `imported` root.
  */
-const OUTWARD_KINDS = new Set(["imported", "same-file", "global", "unresolved"])
+const NAMEABLE_KINDS = new Set(["imported", "same-file", "global", "unresolved", "prop-callback"])
 
 /** Whole-word match, so `setProduct` is not found inside `setProducts`. */
 function mentions(text: string, name: string): boolean {

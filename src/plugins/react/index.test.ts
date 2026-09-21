@@ -439,6 +439,31 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(finding.message).not.toContain("keep only the id in state")
   })
 
+  it("unresolvable-write.tsx describes the call without claiming it is state", async () => {
+    // `useState` is not imported here, so `isReactApi` refuses it and
+    // `component_state.state` comes back empty. The finding used to read
+    // "it does nothing this rule can name; … delete the state and the
+    // effect" — a sentence that contradicts itself and prescribes a deletion
+    // it has no basis for.
+    const { judge } = createMockJudge(replacing("render_computation"))
+    const report = await runFixture("should-warn/unresolvable-write.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.errors).toEqual([])
+    expect(report.findings.length).toBe(1)
+    const finding = report.findings[0]!
+    expect(finding.message).toContain("calls `setTotal(…)` with `items`")
+    expect(finding.message).toContain(
+      "`setTotal` looks like a state setter but came from a `useState` that does not " +
+        "resolve to React's — check this file's imports before removing",
+    )
+    expect(finding.message).not.toContain("does nothing this rule can name")
+    expect(finding.facts["statesWritten"]).toEqual([])
+    expect(finding.facts["unresolvedWrites"]).toEqual(["setTotal"])
+  })
+
   it("fetch-cross-file.tsx caveats the callee it could not read", async () => {
     const { judge } = createMockJudge(replacing("data_library"))
     const report = await runFixture("should-warn/fetch-cross-file.tsx", {
@@ -470,11 +495,13 @@ describe("react/useeffect-alternatives — should-warn", () => {
     const finding = report.findings[0]!
     expect(finding.messageId).toBe("wrapMountEffect")
     expect(finding.message).toContain("mount-only sync with `hostRef.current`")
-    // `readsOutsideDeps` reaches the message only as a `key` suggestion, and
-    // never as "add it to the dependency array".
-    expect(finding.message).toContain(
-      "it also reads `initialValue`, so pass `key={initialValue}`",
-    )
+    // `readsOutsideDeps` reaches the message only as a `key` suggestion and
+    // never as "add it to the dependency array" — and here the length budget
+    // spends it, because this fixture also carries an unresolved-callee
+    // caveat, which is never dropped. The clause itself is covered in the
+    // rule's own tests, where nothing crowds it out.
+    expect(finding.message).not.toContain("dependency array")
+    expect(finding.message).toContain("1 callee (createEditor) unresolved across files")
     expect(finding.facts["depsKind"]).toBe("empty")
     expect(finding.facts["hasCleanup"]).toBe(true)
   })

@@ -6,8 +6,10 @@ import type { EffectData } from "./effect-data.js"
 import {
   EITHER_OR_MIN,
   KEEP_FAMILY_MASS_MAX,
+  WORD_BUDGET,
   summariseChoice,
   useEffectAlternatives,
+  wordCount,
 } from "./useeffect-alternatives.js"
 import type { EffectFacts, EffectQuestions } from "./useeffect-alternatives.js"
 
@@ -318,9 +320,12 @@ describe("the observation clause is built from static facts alone", () => {
     )
   })
 
-  it("names externals, outward calls and state in that order", () => {
+  it("names externals, calls and state in that order", () => {
+    // The callback prop is in this list because calling it is the whole of
+    // what a `notify_parent` effect does; leaving it out was how such a
+    // finding came to describe itself as doing nothing nameable.
     expect(decide({ notify_parent: 1 }, { slices: RICH_SLICES })?.message).toContain(
-      "touches `window.localStorage` and calls `postLike()` and sets `isOn`",
+      "touches `window.localStorage` and calls `onChange(isOn)` and `postLike()` and sets `isOn`",
     )
   })
 
@@ -362,9 +367,23 @@ describe("the observation clause is built from static facts alone", () => {
 })
 
 describe("the alternative clause", () => {
-  it("prints the runner-up's fix when it is worth printing", () => {
-    const verdict = decide({ derive_by_id: 0.88, key_prop: 0.12 })
+  it("prints the runner-up's fix when it is worth printing and there is room", () => {
+    // Note which clause gave way: the `useMemo` aside is dropped first, so
+    // the second *fix* survives at the cost of a general remark. That is the
+    // ordering — a clause that changes what the reader does outranks one
+    // that does not.
+    const verdict = decide({ render_computation: 0.88, key_prop: 0.12 })
     expect(verdict?.message).toContain("; or (12%) delete it and render `ProductList`")
+    expect(verdict?.message).not.toContain("inside `useMemo`")
+  })
+
+  it("gives up the alternative when the primary fix is already long", () => {
+    // `derive_by_id`'s phrase is long enough that carrying a second fix puts
+    // the line at 38 words. The runner-up is the last thing dropped, but it
+    // is still dropped: one clear instruction beats two crowded ones.
+    const verdict = decide({ derive_by_id: 0.88, key_prop: 0.12 })
+    expect(verdict?.message).not.toContain("; or (")
+    expect(wordCount(verdict?.message ?? "")).toBeLessThanOrEqual(WORD_BUDGET)
   })
 
   it("says nothing about a runner-up below the bar", () => {
@@ -485,5 +504,283 @@ describe("the mount finding does not argue with itself", () => {
     )
     expect(verdict?.messageId).toBe("wrapMountEffect")
     expect(verdict?.message).not.toContain("to keeping it")
+  })
+})
+
+/* ── the message must never assert more than it observed ─────────────────── */
+
+describe("a write the payload could not confirm is state", () => {
+  /**
+   * `useState` is not imported from react, so `isReactApi` refuses it — the
+   * right call, since that `useState` is undefined. `component_state.state`
+   * is then empty and the setter is classified by whatever it did resolve
+   * to. The information is still there; only the claim "React state" is not.
+   */
+  const UNCONFIRMED: Record<string, JsonValue> = {
+    component_state: {
+      owner: { name: "Cart", kind: "component" },
+      props: ["items"],
+      state: [],
+      hookResults: [{ binding: "setTotal", hook: "useState", from: null }],
+    },
+    effect_body: {
+      calls: [
+        {
+          line: 6,
+          callee: "setTotal",
+          kind: "hook-result",
+          via: "useState",
+          arguments: "items.reduce((sum, item) => sum + item.price, 0)",
+          inputs: ["items"],
+          nested: null,
+        },
+        {
+          line: 6,
+          callee: "items.reduce",
+          kind: "member",
+          arguments: "(sum, item) => sum + item.price, 0",
+          inputs: ["items"],
+          nested: null,
+        },
+      ],
+      resolved: {},
+      unresolved: [],
+      externals: [],
+    },
+  }
+
+  it("names the call it saw instead of claiming to have seen nothing", () => {
+    const verdict = decide({ render_computation: 1 }, { slices: UNCONFIRMED })
+    expect(verdict?.message).toContain("calls `setTotal(…)` with `items`")
+    expect(verdict?.message).not.toContain("cannot describe")
+  })
+
+  it("says why the write is unconfirmed, and points at the import", () => {
+    const verdict = decide({ render_computation: 1 }, { slices: UNCONFIRMED })
+    expect(verdict?.message).toContain(
+      "`setTotal` looks like a state setter but came from a `useState` that does not " +
+        "resolve to React's — check this file's imports before removing",
+    )
+  })
+
+  it("carries the unconfirmed write in facts, separately from real state", () => {
+    const facts = decide({ render_computation: 1 }, { slices: UNCONFIRMED })?.facts
+    expect(facts?.statesWritten).toEqual([])
+    expect(facts?.unresolvedWrites).toEqual(["setTotal"])
+    expect(facts?.unresolvedWriteHook).toBe("useState")
+  })
+})
+
+describe("an effect with nothing nameable in it", () => {
+  const OPAQUE: Record<string, JsonValue> = {
+    component_state: {
+      owner: { name: "Thing", kind: "component" },
+      props: [],
+      state: [],
+      hookResults: [],
+    },
+    effect_body: {
+      calls: [
+        { line: 5, callee: "a.b", kind: "member", arguments: "", inputs: [], nested: null },
+      ],
+      resolved: {},
+      unresolved: [],
+      externals: [],
+    },
+  }
+
+  it("says plainly that it cannot describe the effect", () => {
+    expect(decide({ render_computation: 1 }, { slices: OPAQUE })?.message).toContain(
+      "useEffect should not exist — this rule cannot describe what it does",
+    )
+  })
+
+  it("does not then prescribe deleting state it never saw", () => {
+    // The original defect: "it does nothing this rule can name; … delete the
+    // state and the effect" — a sentence that contradicts itself, and an
+    // instruction with nothing behind it.
+    const message = decide({ render_computation: 1 }, { slices: OPAQUE })?.message ?? ""
+    expect(message).toContain("and delete the effect")
+    expect(message).not.toContain("delete the state")
+    expect(message).toContain("the effect's writes could not be resolved — verify before removing")
+  })
+
+  it("never invents a state name for a fix that wants one", () => {
+    // `notify_parent` used to fill this slot with the literal string
+    // "local", producing advice about a state the component does not have.
+    const message = decide({ notify_parent: 1 }, { slices: OPAQUE })?.message ?? ""
+    expect(message).toContain("in the handler that sets it")
+    expect(message).not.toContain("`local`")
+  })
+
+  it("leaves no fix phrase claiming state, for any outcome", () => {
+    for (const [label] of FIXES) {
+      const message = decide({ [label]: 1 }, { slices: OPAQUE })?.message ?? ""
+      expect(message, label).not.toMatch(/the `[A-Za-z]+` state/)
+      expect(message, label).not.toContain("delete the state")
+      expect(message, label).not.toContain("delete the flag state")
+    }
+  })
+})
+
+/* ── the length budget ───────────────────────────────────────────────────── */
+
+describe("the word budget", () => {
+  it("drops the `useMemo` aside first", () => {
+    // Long observation, so the aside is what has to give.
+    const long = decide(
+      { render_computation: 1 },
+      {
+        slices: {
+          effect_body: {
+            calls: [
+              {
+                line: 7,
+                callee: "setFiltered",
+                kind: "state-setter",
+                arguments: "products.filter((p) => p.inStock)",
+                inputs: ["products", "category", "searchTerm", "sortOrder"],
+                nested: null,
+              },
+            ],
+            resolved: {},
+            unresolved: [],
+            externals: ["window.localStorage", "document.title"],
+          },
+        },
+      },
+    )
+    expect(long?.message).not.toContain("inside `useMemo`")
+    expect(long?.message).toContain("compute it during render and delete")
+  })
+
+  it("keeps the aside in its original position when it fits", () => {
+    // An infix, not a suffix: dropping it must leave the sentence exactly as
+    // it would read had it never been written.
+    expect(decide({ render_computation: 1 })?.message).toContain(
+      "compute it during render — inside `useMemo` if the work is expensive — " +
+        "and delete the state and the effect",
+    )
+  })
+
+  it("drops the keep-family caveat when the line is over budget", () => {
+    // The caveat and the alternative are mutually exclusive — both are built
+    // from the single runner-up — so the ordering between them is only ever
+    // exercised one at a time. Here the runner-up is in the keep family, so
+    // it is a caveat, and it goes once the aside is not enough.
+    const verdict = decide(
+      { render_computation: 0.85, keep_effect: 0.15 },
+      {
+        slices: {
+          effect_body: {
+            calls: [
+              {
+                line: 7,
+                callee: "setFiltered",
+                kind: "state-setter",
+                arguments: "products.filter((p) => p.inStock)",
+                inputs: ["products", "category", "searchTerm", "sortOrder"],
+                nested: null,
+              },
+            ],
+            resolved: {},
+            unresolved: [],
+            externals: ["window.localStorage", "document.title", "navigator.onLine"],
+          },
+        },
+      },
+    )
+    expect(verdict?.message).not.toContain("inside `useMemo`")
+    expect(verdict?.message).not.toContain("to keeping it")
+    expect(wordCount(verdict?.message ?? "")).toBeLessThanOrEqual(WORD_BUDGET)
+  })
+
+  it("keeps the keep-family caveat when it fits", () => {
+    expect(decide({ render_computation: 0.85, keep_effect: 0.15 })?.message).toContain(
+      "model gave 15% to keeping it",
+    )
+  })
+
+  it("never drops an unresolved-callee caveat, even over budget", () => {
+    const verdict = decide(
+      { render_computation: 1 },
+      {
+        slices: {
+          effect_body: {
+            calls: [],
+            resolved: {},
+            unresolved: ["fetchProduct", "normalise", "track"],
+            externals: [],
+          },
+        },
+      },
+    )
+    // That caveat names code the reader cannot see; dropping it would turn
+    // "verify this first" into silence.
+    expect(verdict?.message).toContain("unresolved across files")
+    expect(wordCount(verdict?.message ?? "")).toBeGreaterThan(WORD_BUDGET)
+  })
+
+  it("stops at whole clauses — never a truncated sentence", () => {
+    const verdict = decide({ render_computation: 1 })
+    expect(verdict?.message).not.toContain("…;")
+    expect(verdict?.message?.endsWith("…")).toBe(false)
+  })
+
+  it("counts words the way the budget does", () => {
+    expect(wordCount("  one   two three ")).toBe(3)
+    expect(wordCount("")).toBe(0)
+    expect(WORD_BUDGET).toBe(35)
+  })
+})
+
+describe("the mount message sheds its own clauses", () => {
+  const base = {
+    effect_call: {
+      line: 7,
+      endLine: 11,
+      source: "useEffect(() => { … }, [])",
+      deps: [],
+      depsKind: "empty",
+      hasCleanup: true,
+      callback: "inline",
+      readsOutsideDeps: ["initialValue"],
+    },
+  }
+
+  it("keeps the `key` suggestion when there is room", () => {
+    const verdict = decide(
+      { mount_effect: 0.9, keep_effect: 0.1 },
+      {
+        slices: {
+          ...base,
+          effect_body: { calls: [], resolved: {}, unresolved: [], externals: ["new Editor"] },
+        },
+      },
+    )
+    expect(verdict?.message).toContain("pass `key={initialValue}`")
+    // The rationale for wrapping goes first: a reader being told to use
+    // `useMountEffect` can infer why.
+    expect(verdict?.message).not.toContain("lint suppression")
+  })
+
+  it("gives up the `key` suggestion rather than an unresolved-callee caveat", () => {
+    const verdict = decide(
+      { mount_effect: 0.9, keep_effect: 0.1 },
+      {
+        slices: {
+          ...base,
+          effect_body: {
+            calls: [],
+            resolved: {},
+            unresolved: ["createEditor"],
+            externals: ["hostRef.current"],
+          },
+        },
+      },
+    )
+    expect(verdict?.message).toContain("unresolved across files")
+    expect(verdict?.message).not.toContain("pass `key=")
+    expect(wordCount(verdict?.message ?? "")).toBeLessThanOrEqual(WORD_BUDGET)
   })
 })
