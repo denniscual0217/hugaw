@@ -201,9 +201,9 @@ export function buildMessage(facts: MemoFacts): string {
     )
   }
   if (facts.identityMatters > IDENTITY_CAVEAT_MIN && facts.identityMatters <= IDENTITY_MATTERS_MAX) {
-    caveats.push(
-      `weak identity signal (${Math.round(facts.identityMatters * 100)}%) — verify no consumer compares references`,
-    )
+    // No percentage: this clause only exists inside the caveat band, so
+    // "weak" is already the whole of what the number would have said.
+    caveats.push("weak identity signal — verify no consumer compares references")
   }
   for (const caveat of caveats) message += `; ${caveat}`
   return message

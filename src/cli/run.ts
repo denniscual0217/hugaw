@@ -4,7 +4,7 @@ import type { Cache, Judge, LanguageAdapter, RunReport } from "../core/index.js"
 import { configSchema, noopCache, runLint, truncateFindings } from "../core/index.js"
 import { dryRun } from "../format/dry-run.js"
 import { externalFormatter, FormatterNotInstalledError } from "../format/external.js"
-import { json, jsonWithMetadata } from "../format/json.js"
+import { findingsMetadata, json, jsonWithMetadata } from "../format/json.js"
 import { stylish } from "../format/stylish.js"
 import { toEslint } from "../format/to-eslint.js"
 import type { Colors, EslintRulesMeta } from "../format/types.js"
@@ -140,6 +140,8 @@ export async function run(flags: CliFlags, io: Io = defaultIo()): Promise<number
         : jsonWithMetadata(results, {
             rulesMeta: rulesMetaOf(config.plugins),
             usage: usageMetadata(report.stats),
+            // The truncated set, so `findings` lines up with `results`.
+            findings: findingsMetadata(findings),
           }),
     )
     // stdout stays pure JSON for both, so `| jq` works either way; the human

@@ -53,6 +53,15 @@ describe("--format json-with-metadata", () => {
       estimatedCostUsd: 0.005603,
       rate: { inputPerMTok: 0.042, outputPerMTok: 0 },
     },
+    findings: [
+      {
+        ruleId: "react/pointless-usememo",
+        filePath: "/repo/src/Price.tsx",
+        loc: { line: 2, column: 17, endLine: 2, endColumn: 40 },
+        messageId: "pointlessUseMemo",
+        facts: { identityMatters: 0.3, costScore: 0.1 },
+      },
+    ],
   }
 
   it("keeps the results array untouched under a `results` key", () => {
@@ -68,6 +77,20 @@ describe("--format json-with-metadata", () => {
   it("carries the usage record beside the rule metadata", () => {
     const parsed = JSON.parse(jsonWithMetadata([], metadata)) as { metadata: typeof metadata }
     expect(parsed.metadata.usage).toEqual(metadata.usage)
-    expect(Object.keys(parsed.metadata).sort()).toEqual(["rulesMeta", "usage"])
+    expect(Object.keys(parsed.metadata).sort()).toEqual(["findings", "rulesMeta", "usage"])
+  })
+
+  it("publishes the numbers the messages deliberately leave out", () => {
+    // `identityMatters: 0.3` is the value that used to print as "(30%)" in
+    // prose. It belongs where something can compute on it, not in a sentence
+    // a reader cannot act on.
+    const parsed = JSON.parse(jsonWithMetadata([RESULT], metadata)) as { metadata: typeof metadata }
+    expect(parsed.metadata.findings[0]?.facts).toEqual({ identityMatters: 0.3, costScore: 0.1 })
+    expect(parsed.metadata.findings[0]?.loc).toEqual({
+      line: 2,
+      column: 17,
+      endLine: 2,
+      endColumn: 40,
+    })
   })
 })

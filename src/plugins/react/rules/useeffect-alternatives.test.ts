@@ -136,9 +136,9 @@ describe("the keep-family mass gate", () => {
     const verdict = decide(split)
     expect(verdict?.facts.replacement).toBe("render_computation")
     expect(verdict?.facts.keepFamilyMass).toBeCloseTo(0.47)
-    // Still reported — 0.47 is under the bar — but the message says what the
-    // model actually thought rather than implying near-certainty.
-    expect(verdict?.message).toContain("model gave 30% to keeping it")
+    // Still reported — 0.47 is under the bar — but the message flags that
+    // keeping it is live, without publishing the number behind that.
+    expect(verdict?.message).toContain("it may be worth keeping — verify before removing")
   })
 
   it("stays quiet on a keep-family mode even below the bar", () => {
@@ -373,7 +373,7 @@ describe("the alternative clause", () => {
     // ordering — a clause that changes what the reader does outranks one
     // that does not.
     const verdict = decide({ render_computation: 0.88, key_prop: 0.12 })
-    expect(verdict?.message).toContain("; or (12%) delete it and render `ProductList`")
+    expect(verdict?.message).toContain("; or delete it and render `ProductList`")
     expect(verdict?.message).not.toContain("inside `useMemo`")
   })
 
@@ -393,8 +393,22 @@ describe("the alternative clause", () => {
 
   it("turns a keep-family runner-up into a caveat, not a second fix", () => {
     const verdict = decide({ data_library: 0.85, keep_effect: 0.15 })
-    expect(verdict?.message).toContain("model gave 15% to keeping it")
-    expect(verdict?.message).not.toContain("; or (")
+    expect(verdict?.message).toContain("it may be worth keeping — verify before removing")
+    expect(verdict?.message).not.toContain("; or ")
+  })
+
+  it("puts no probability in any message, at any mass", () => {
+    // A number in prose is either actionable — in which case it should have
+    // moved `decide` — or it is noise the reader cannot weigh. Every mass
+    // here produced a percentage in the version this replaces.
+    for (const mass of [0.12, 0.3, 0.43, 0.49]) {
+      for (const runnerUp of ["key_prop", "keep_effect"]) {
+        const message =
+          decide({ render_computation: 1 - mass, [runnerUp]: mass })?.message ?? ""
+        expect(message, `${runnerUp} at ${mass}`).not.toMatch(/%/)
+        expect(message, `${runnerUp} at ${mass}`).not.toMatch(/\d\d/)
+      }
+    }
   })
 })
 
@@ -691,13 +705,13 @@ describe("the word budget", () => {
       },
     )
     expect(verdict?.message).not.toContain("inside `useMemo`")
-    expect(verdict?.message).not.toContain("to keeping it")
+    expect(verdict?.message).not.toContain("worth keeping")
     expect(wordCount(verdict?.message ?? "")).toBeLessThanOrEqual(WORD_BUDGET)
   })
 
   it("keeps the keep-family caveat when it fits", () => {
     expect(decide({ render_computation: 0.85, keep_effect: 0.15 })?.message).toContain(
-      "model gave 15% to keeping it",
+      "it may be worth keeping — verify before removing",
     )
   })
 

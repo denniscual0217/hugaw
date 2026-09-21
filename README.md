@@ -136,6 +136,20 @@ this rate. Full precision in JSON — the rounding above is a display concern. `
 `rate` are omitted entirely for an unpriced model, so nothing sums a zero it mistakes for a
 measurement. Both JSON formats keep stdout pure and put the human stats line on stderr.
 
+`metadata.findings` carries each finding's `facts` — the probabilities, the masses, the
+statically computed evidence — with enough location to join back onto `results`:
+
+```sh
+hugaw --format json-with-metadata | jq '.metadata.findings[0].facts.probabilities'
+```
+
+**No probability appears in a message.** A number in prose is either actionable, in which
+case it should have moved `decide` instead, or it is not, in which case it is a
+distribution leaking into someone else's sentence — `or (43%) compute it during render`
+tells a reader nothing they can act on, and nothing at all if they do not know what a
+probability mass is. Messages say what to do and what could not be verified; the numbers
+live here, where something can compute on them.
+
 ## Config — `hugaw.config.ts`
 
 ```ts

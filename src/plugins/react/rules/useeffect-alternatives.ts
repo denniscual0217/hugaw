@@ -295,9 +295,9 @@ export function wordCount(text: string): number {
 interface Budgeted {
   /** The parenthetical about when `useMemo` earns its keep. */
   readonly aside: boolean
-  /** "model gave N% to keeping it". */
+  /** "it may be worth keeping — verify before removing". */
   readonly keepCaveat: boolean
-  /** "or (N%) <the runner-up's fix>". */
+  /** "or <the runner-up's fix>". */
   readonly alternative: boolean
 }
 
@@ -345,7 +345,7 @@ function assemble(facts: EffectFacts, budget: Budgeted): string {
       // the first thing to go anyway.
       ? FIX_PHRASE[facts.runnerUp]?.(facts, false)
       : null
-  if (alternative) message += `; or (${percent(facts.runnerUpMass)}) ${alternative}`
+  if (alternative) message += `; or ${alternative}`
 
   for (const caveat of caveatsOf(facts, budget.keepCaveat)) message += `; ${caveat}`
   return message
@@ -382,7 +382,20 @@ function assembleMount(facts: EffectFacts, rationale: boolean, key: boolean): st
   return message
 }
 
-/** Only real blind spots. Never boilerplate — see the memo rule's message. */
+/**
+ * Only real blind spots. Never boilerplate — see the memo rule's message.
+ *
+ * **No probability reaches the message.** A number in prose is either
+ * actionable, in which case it should have moved `decide` instead, or it is
+ * not, in which case it is our distribution leaking into someone else's
+ * sentence. "or (43%)" was the case that made the point: nobody does
+ * anything different at 43% than at 30%, and a reader who does not know what
+ * a probability mass is cannot tell whether 43% is a lot.
+ *
+ * So the message says what to do and what we could not verify. The numbers
+ * are real and stay in `facts`, where `--format json-with-metadata` publishes
+ * them for anything that actually computes on them.
+ */
 function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
   const caveats: string[] = []
   if (facts.unresolvedCallees.length > 0) {
@@ -424,13 +437,9 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
     KEEP_FAMILY.has(facts.runnerUp) &&
     facts.runnerUpMass >= EITHER_OR_MIN
   ) {
-    caveats.push(`model gave ${percent(facts.runnerUpMass)} to keeping it`)
+    caveats.push("it may be worth keeping — verify before removing")
   }
   return caveats
-}
-
-function percent(mass: number): string {
-  return `${Math.round(mass * 100)}%`
 }
 
 /* ── slice readers ───────────────────────────────────────────────────────── */

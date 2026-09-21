@@ -8,6 +8,6 @@ export default defineConfig({
   plugins: [react],
   rules: {
     "react/useeffect-alternatives": "error",
-    "react/pointless-usememo": "off",
+    "react/pointless-usememo": "error",
   },
 });

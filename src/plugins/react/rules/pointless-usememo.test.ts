@@ -330,7 +330,7 @@ describe("pointless-usememo message", () => {
     )
     expect(unclassified).not.toContain("behind a spread")
     expect(buildMessage({ ...base, identityMatters: 0.3 })).toContain(
-      "weak identity signal (30%) — verify no consumer compares references",
+      "weak identity signal — verify no consumer compares references",
     )
     // 0.2 and below is noise, not a blind spot.
     expect(buildMessage({ ...base, identityMatters: 0.2 })).not.toContain("weak identity signal")

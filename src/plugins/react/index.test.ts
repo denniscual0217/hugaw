@@ -121,7 +121,7 @@ const WARN_CASES: readonly WarnCase[] = [
     file: "should-warn/weak-identity-caveat.tsx",
     line: 4,
     column: 17,
-    contains: ["weak identity signal (30%) — verify no consumer compares references"],
+    contains: ["weak identity signal — verify no consumer compares references"],
     script: () => ({ cost: 0.1, identity_matters: 0.3 }),
   },
 ]

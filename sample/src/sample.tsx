@@ -1,21 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
-function CheckoutForm() {
-  const [isSubmitted, setIsSubmitted] = useState(false);
-
+function App() {
   useEffect(() => {
-    if (isSubmitted) {
-      post("/api/register");
-      showNotification("Submitted!");
-    }
-  }, [isSubmitted]);
+    loadLocalStorageData();
+    checkAuthSession();
+  }, []);
 
-  function handleSubmit(e) {
-    e.preventDefault();
-    setIsSubmitted(true);
-  }
-
-  return <form onSubmit={handleSubmit}>{/* ... */}</form>;
+  return <MainContent />;
 }
 
 // function Toggle({ onChange }) {
