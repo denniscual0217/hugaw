@@ -217,9 +217,10 @@ Gates: `pnpm typecheck` and `pnpm test` must be green. No ESLint config for MVP.
 
 ## 9. Fixtures — `fixtures/`, three buckets
 
-> **Historical paths.** Fixtures were regrouped per rule on 2026-09-21; the three buckets
-> now live under `fixtures/<rule name>/`. The bucket names and their meanings below are
-> unchanged.
+> **Historical paths and names.** Fixtures were regrouped per rule on 2026-09-21; the three
+> buckets now live under `fixtures/<rule name>/`, and `should-stay-silent/` was renamed
+> `should-pass/`. The buckets' *meanings* below are unchanged: `should-pass` reaches the
+> model and passes the gates, as distinct from `should-skip`, which never reaches it.
 
 ~15 small `.tsx` files, each a table-driven vitest case:
 - `should-warn/` — constant work, no identity consumer (the Price example)

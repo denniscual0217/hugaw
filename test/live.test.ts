@@ -56,7 +56,7 @@ describe.skipIf(!live)("live TypeSafe judgment", () => {
       adapters: [typescriptAdapter],
       judge: new TypeSafeJudge({ model: "jev-1.13.0" }),
       cwd: REPO_ROOT,
-      files: [fixturePath("should-stay-silent/sort-and-group.tsx")],
+      files: [fixturePath("should-pass/sort-and-group.tsx")],
     })
     expect(report.errors).toEqual([])
     expect(report.stats.judged).toBe(1)

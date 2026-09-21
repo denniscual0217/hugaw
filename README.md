@@ -268,14 +268,17 @@ pnpm test:live     # HUGAW_LIVE=1, one opt-in call against the real API
 
 Fixtures live in three buckets that encode the cost model:
 
-- `fixtures/should-warn/` — reaches the model and reports
-- `fixtures/should-skip/` — dropped by `skip`; the tests assert the judge was **never invoked**
-- `fixtures/should-stay-silent/` — reaches the model, `decide` returns null
+- `should-warn/` — reaches the model and reports
+- `should-skip/` — dropped by `skip` before any request; the tests assert the judge was
+  **never invoked**. This is the free bucket.
+- `should-pass/` — reaches the model and *passes* the gates in `decide`, so nothing is
+  reported. It was checked and cleared; that is the difference from `should-skip`, which was
+  never checked at all.
 
 ## Adding fixtures for a new rule
 
 Fixtures live under `fixtures/<rule name>/`, in the same three buckets — `should-warn`,
-`should-skip`, `should-stay-silent`. `_`-prefixed files are support files for the fixture
+`should-skip`, `should-pass`. `_`-prefixed files are support files for the fixture
 beside them and stay in that bucket, because the fixture imports them by relative path.
 
 Keep the set small and deliberate:

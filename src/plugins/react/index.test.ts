@@ -166,11 +166,11 @@ describe("react/pointless-usememo — should-warn", () => {
   })
 
   it("records a prop-bound callee as unresolved, and caveats the message", async () => {
-    // This fixture lives in should-stay-silent/ because the live model judges
+    // This fixture lives in should-pass/ because the live model judges
     // `transform(items)` as unbounded work. The caveat path it exercises is
     // still needed, so it is asserted here on a mock that keeps it cheap.
     const { judge, calls } = createMockJudge(CHEAP)
-    const report = await runFixture("should-stay-silent/prop-callee.tsx", { judge })
+    const report = await runFixture("should-pass/prop-callee.tsx", { judge })
 
     expect(calls[0]!.state["callee_sources"]).toEqual({ resolved: {}, unresolved: ["transform"] })
     expect(report.findings.length).toBe(1)
@@ -267,7 +267,7 @@ interface SilentCase {
 const SILENT_CASES: readonly SilentCase[] = [
   {
     // Live: score 1.30, mass 0.63, mode 2 — suppressed on mass.
-    file: "should-stay-silent/prop-callee.tsx",
+    file: "should-pass/prop-callee.tsx",
     script: () => ({
       cost: { score: 1.3, probabilities: { "0": 0.35, "1": 0.02, "2": 0.6, "3": 0.03 } },
       identity_matters: 0.11,
@@ -277,28 +277,28 @@ const SILENT_CASES: readonly SilentCase[] = [
     // Bimodal: 55% "unbounded prop array", 0% "bounded right here", yet the
     // expected score is 1.1 and rounds onto level 1. Deps equal the inputs,
     // so the coverage gate cannot fire — mass alone must suppress this.
-    file: "should-stay-silent/bimodal-map.tsx",
+    file: "should-pass/bimodal-map.tsx",
     script: () => ({
       cost: { score: 1.1, probabilities: { "0": 0.45, "1": 0, "2": 0.55, "3": 0 } },
       identity_matters: 0.1,
     }),
   },
   // Cost above COST_MAX — CALIBRATION.md case E.
-  { file: "should-stay-silent/sort-and-group.tsx", script: () => ({ cost: 2.4, identity_matters: 0.1 }) },
+  { file: "should-pass/sort-and-group.tsx", script: () => ({ cost: 2.4, identity_matters: 0.1 }) },
   // Confidence below MIN_CONFIDENCE.
   {
-    file: "should-stay-silent/low-confidence.tsx",
+    file: "should-pass/low-confidence.tsx",
     script: () => ({ cost: { score: 0.5, confidence: 0.3 }, identity_matters: 0.1 }),
   },
   // Identity above IDENTITY_MATTERS_MAX — CALIBRATION.md case F.
   {
-    file: "should-stay-silent/identity-ambiguous.tsx",
+    file: "should-pass/identity-ambiguous.tsx",
     script: () => ({ cost: 0.1, identity_matters: 0.7 }),
   },
 ]
 
 describe("react/pointless-usememo — the FilterableList false positive", () => {
-  const FILE = "should-stay-silent/filterable-list.tsx"
+  const FILE = "should-pass/filterable-list.tsx"
 
   /** Both memos at the same cost distribution, so only coverage differs. */
   const atMass = (mass: number): MockScript => () => ({
@@ -372,7 +372,7 @@ describe("react/pointless-usememo — the FilterableList false positive", () => 
   })
 })
 
-describe("react/pointless-usememo — should-stay-silent (judged, not reported)", () => {
+describe("react/pointless-usememo — should-pass (judged, not reported)", () => {
   it.each(SILENT_CASES)("$file reaches the model and reports nothing", async (testCase) => {
     const { judge, calls } = createMockJudge(testCase.script)
     const report = await runFixture(testCase.file, { judge })
