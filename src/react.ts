@@ -1,3 +1,5 @@
 export { default, react } from "./plugins/react/index.js"
 export type { MemoData, MemoFacts } from "./plugins/react/index.js"
 export { pointlessUseMemo } from "./plugins/react/index.js"
+export type { EffectData, EffectFacts, Replacement } from "./plugins/react/index.js"
+export { useEffectAlternatives } from "./plugins/react/index.js"

@@ -22,13 +22,25 @@ export interface CalleeSources {
  */
 export function calleeSourcesOf(call: CallExpression): CalleeSources {
   const factory = call.getArguments()[0]
+  if (!factory) return { resolved: {}, unresolved: [] }
+  return calleeSourcesIn(factory, call.getSourceFile().getFilePath())
+}
+
+/**
+ * The same walk over an arbitrary scope.
+ *
+ * `calleeSourcesOf` is the memo rule's entry point (the factory is argument
+ * zero); rule #2 hands in an effect callback, which may be a separately
+ * declared function rather than an argument. One implementation, because the
+ * decision being made — inline the body or name it as a blind spot — is the
+ * same decision in both rules, and a second copy would drift from the
+ * calibration that justifies it.
+ */
+export function calleeSourcesIn(scope: TsNode, filePath: string): CalleeSources {
   const resolved: Record<string, string> = {}
   const unresolved: string[] = []
-  if (!factory) return { resolved, unresolved }
 
-  const filePath = call.getSourceFile().getFilePath()
-
-  for (const inner of factory.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+  for (const inner of scope.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     const callee = inner.getExpression()
     // Only bare identifiers: `obj.method()` belongs to a value, not a module.
     if (!Node.isIdentifier(callee)) continue
@@ -36,6 +48,15 @@ export function calleeSourcesOf(call: CallExpression): CalleeSources {
     if (Object.hasOwn(resolved, name) || unresolved.includes(name)) continue
 
     const declaration = resolveDeclaration(callee)
+    // An ambient declaration is not a blind spot. `fetch`, `setTimeout` and
+    // `parseInt` resolve to a `.d.ts` in another file, which the cross-file
+    // test below would read as "unresolved" and caveat on every effect in any
+    // project with `lib.dom` — a caveat that names a global everyone can
+    // already see, on the majority of findings, is noise that teaches an
+    // agent to skip the caveat line. The platform's own signatures are also
+    // the one case where the *name alone* is a reliable description, which is
+    // exactly what CALIBRATION.md case C says cross-file names are not.
+    if (declaration?.getSourceFile().isDeclarationFile()) continue
     if (!declaration || declaration.getSourceFile().getFilePath() !== filePath) {
       unresolved.push(name)
       continue
@@ -57,7 +78,7 @@ export function calleeSourcesOf(call: CallExpression): CalleeSources {
 }
 
 /** The node whose text actually shows what a callee does, or null if we have none. */
-function functionBodyOf(declaration: TsNode): TsNode | null {
+export function functionBodyOf(declaration: TsNode): TsNode | null {
   if (Node.isFunctionDeclaration(declaration)) return declaration
   if (Node.isVariableDeclaration(declaration)) {
     const initializer = declaration.getInitializer()

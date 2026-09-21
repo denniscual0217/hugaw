@@ -94,8 +94,14 @@ function boundNames(nameNode: Node): string[] {
   return []
 }
 
-/** The identifier a dependency expression is rooted at: `data.items` -> `data`. */
-function baseIdentifierOf(expression: Expression): string | null {
+/**
+ * The identifier a dependency expression is rooted at: `data.items` -> `data`.
+ *
+ * Exported because rule #2 roots dependency entries and body reads the same
+ * way — a dep list is only comparable to a set of names once each entry is
+ * reduced to the name it hangs off.
+ */
+export function baseIdentifierOf(expression: Expression): string | null {
   let current: Node = expression
   while (
     Node.isPropertyAccessExpression(current) ||

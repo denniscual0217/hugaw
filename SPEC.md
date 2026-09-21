@@ -52,12 +52,20 @@ Rules are authored independently and execute batched. This is what keeps cost at
 
 ---
 
-## 3. The one MVP rule — `react/pointless-usememo`
+## 3. The rules
 
-### select
+> **Written when there was one.** `react/useeffect-alternatives` shipped 2026-09-21 as the
+> second rule, with its own measured thresholds and a single Choice question; it is specified
+> by `README.md` and `CALIBRATION.md`, not here. The section below is the original
+> `pointless-usememo` design and is left as written — including the `skip` it no longer has
+> (deleted 2026-09-21) — because it is the record of what was designed, not of what is.
+
+### 3.1 `react/pointless-usememo`
+
+#### select
 Every `CallExpression` whose callee is `useMemo` (imported from `react`).
 
-### skip — static escape hatches, zero cost
+#### skip — static escape hatches, zero cost
 Return a reason string (candidate dropped, never judged) when **provably justified**:
 - the memoized binding is passed as a prop to a component declared via `React.memo(...)`
 - the binding appears in any hook's dependency array
@@ -66,7 +74,7 @@ Return a reason string (candidate dropped, never judged) when **provably justifi
 Most legitimate `useMemo` dies here. This is the function that decides whether the
 tool is trusted — every check added here is a false positive that can never happen.
 
-### context slices
+#### context slices
 `component_source`, `memo_call`, `value_usages`, `callee_sources`
 
 - `value_usages` — every reference to the memoized binding inside the component,
@@ -75,7 +83,7 @@ tool is trusted — every check added here is a false positive that can never ha
   **same file**, inline the source. If cross-file, record the name under
   `unresolved` (MVP has no digest pass — see §7).
 
-### ask — one request, two questions
+#### ask — one request, two questions
 ```ts
 cost: score("How expensive is the computation inside `memo_call`?", [
   "Constant work: a property read, arithmetic, string formatting, or an object literal with a few static fields",
@@ -93,7 +101,7 @@ identity_matters: noul(
 Score returns a probability-weighted position over levels 0..3 plus `confidence`.
 Noul returns one probability and **no** confidence.
 
-### decide — plain code, thresholds are module constants
+#### decide — plain code, thresholds are module constants
 ```ts
 const IDENTITY_MATTERS_MAX = 0.4   // weak evidence of legitimacy is enough to stay quiet
 const COST_MAX             = 1.2
@@ -105,7 +113,7 @@ bail if `cost.confidence < MIN_CONFIDENCE`; else report.
 The asymmetry is deliberate: **weak** evidence of legitimacy suppresses, **strong**
 evidence of pointlessness reports. Burden of proof is on the linter.
 
-### message
+#### message
 Single dense line including the fix. A caveat clause is appended **only when there is
 a real blind spot** — `unresolved.length > 0`, or `identity_matters` between 0.2 and
 `IDENTITY_MATTERS_MAX`. Never boilerplate.

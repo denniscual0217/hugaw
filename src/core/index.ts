@@ -6,6 +6,7 @@ export type {
   AnswerFor,
   Answers,
   ChoiceAnswer,
+  ChoiceCriterion,
   ChoiceQuestion,
   NoulAnswer,
   NoulQuestion,

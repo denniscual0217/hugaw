@@ -13,6 +13,10 @@ export default defineConfig({
   model: "jev-1.13.0",
   plugins: [react],
   rules: {
+    // Listed for the record, not for the effect: `resolveRules` already runs
+    // every rule a listed plugin owns at its own `defaultSeverity`, so naming
+    // one here does not disable the others.
     "react/pointless-usememo": "warn",
+    "react/useeffect-alternatives": "warn",
   },
 })

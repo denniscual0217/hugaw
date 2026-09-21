@@ -5,6 +5,8 @@
  * SDK, which is what keeps the SDK out of `src/core` and out of plugins.
  */
 
+import type { JsonObject } from "./json.js"
+
 export type ScoreCriteria = readonly [string, string, ...string[]]
 
 export interface ScoreQuestion<L extends ScoreCriteria = ScoreCriteria> {
@@ -19,7 +21,23 @@ export interface NoulQuestion {
   readonly criteria?: { readonly true: string; readonly false: string }
 }
 
-export interface ChoiceQuestion<C extends Record<string, string | null> = Record<string, string | null>> {
+/**
+ * What one choice label's criterion may be.
+ *
+ * A plain string is the common case and stays the default reading. An object
+ * is for a criterion with internal structure: a rule distinguishing a dozen
+ * near-neighbour outcomes needs to say, per label, what it means, what
+ * evidence in the state supports it, and which neighbour it is *not* — three
+ * fields the model can weigh separately rather than one paragraph it must
+ * parse. Widened here rather than per rule because `choice()` is the only way
+ * a rule builds one, and a factory narrower than the type it returns would
+ * force every such rule to cast around it.
+ */
+export type ChoiceCriterion = string | JsonObject | null
+
+export interface ChoiceQuestion<
+  C extends Record<string, ChoiceCriterion> = Record<string, ChoiceCriterion>,
+> {
   readonly type: "choice"
   readonly instructions: string
   readonly criteria: C
@@ -86,7 +104,7 @@ export function noul(instructions: string, criteria?: { true: string; false: str
 
 export const MAX_CHOICE_LABELS = 255
 
-export function choice<const C extends Record<string, string | null>>(
+export function choice<const C extends Record<string, ChoiceCriterion>>(
   instructions: string,
   criteria: C,
 ): ChoiceQuestion<C> {

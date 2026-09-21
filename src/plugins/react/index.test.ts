@@ -94,6 +94,18 @@ const WARN_CASES: readonly WarnCase[] = [
     contains: ["`label` is only read at line 5"],
   },
   {
+    // Correction 10's class, as a real fixture: `parseInt` resolves to a
+    // `.d.ts` in another file, and before the ambient rule every finding like
+    // this one carried "1 callee (parseInt) unresolved across files". A
+    // caveat naming a global everyone can already see is noise that teaches
+    // an agent to skip the caveat line.
+    file: "should-warn/ambient-callee.tsx",
+    line: 9,
+    column: 18,
+    contains: ["`amount` is only read at line 11"],
+    absent: ["unresolved across files", "verify before removing"],
+  },
+  {
     file: "should-warn/spread-usage.tsx",
     line: 4,
     column: 17,
@@ -350,5 +362,166 @@ describe("react/pointless-usememo — should-pass (judged, not reported)", () =>
     expect(report.stats.judged).toBe(1)
     expect(report.findings).toEqual([])
     expect(report.errors).toEqual([])
+  })
+})
+
+/* ── react/useeffect-alternatives ────────────────────────────────────────── */
+
+const EFFECT_RULE = "useeffect-alternatives"
+
+/** The mock's default choice is `labels[0]` = `keep_effect`, which `decide`
+ *  suppresses — so every case here scripts the answer and asserts the label. */
+const replacing = (label: string): MockScript => () => ({ replacement: label })
+
+describe("react/useeffect-alternatives — should-warn", () => {
+  it("derived-state.tsx reports the canonical finding", async () => {
+    const { judge, calls } = createMockJudge(replacing("render_computation"))
+    const report = await runFixture("should-warn/derived-state.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.errors).toEqual([])
+    expect(calls.length).toBe(1)
+    expect(report.findings.length).toBe(1)
+
+    const finding = report.findings[0]!
+    expect(finding.ruleId).toBe("react/useeffect-alternatives")
+    expect(finding.messageId).toBe("replaceEffect")
+    expect(finding.severity).toBe(1)
+    expect(finding.nodeType).toBe("CallExpression")
+    expect({ line: finding.loc.line, column: finding.loc.column }).toEqual({ line: 6, column: 3 })
+    expect(finding.message).toBe(
+      "useEffect should not exist — sets `filtered` from `products`; " +
+        "compute it during render — inside `useMemo` if the work is expensive — " +
+        "and delete the state and the effect",
+    )
+    expect(finding.facts["keepFamilyMass"]).toBe(0)
+  })
+
+  it("sends exactly the four context slices, and one question", async () => {
+    const { judge, calls } = createMockJudge(replacing("render_computation"))
+    await runFixture("should-warn/derived-state.tsx", { judge, rule: EFFECT_RULE })
+
+    const request = calls[0]!
+    expect(Object.keys(request.state).sort()).toEqual([
+      "component_source",
+      "component_state",
+      "effect_body",
+      "effect_call",
+    ])
+    expect(Object.keys(request.questions)).toEqual([
+      "react/useeffect-alternatives::replacement",
+    ])
+  })
+
+  it("fetch-cross-file.tsx caveats the callee it could not read", async () => {
+    const { judge } = createMockJudge(replacing("data_library"))
+    const report = await runFixture("should-warn/fetch-cross-file.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.errors).toEqual([])
+    expect(report.findings.length).toBe(1)
+    const message = report.findings[0]!.message
+    expect(message).toContain("calls `fetchProduct(productId)` and sets `product`")
+    expect(message).toContain(
+      "replace the effect and the `product` state with the project's data-fetching hook",
+    )
+    expect(message).toContain(
+      "1 callee (fetchProduct) unresolved across files — verify what they do before removing",
+    )
+  })
+
+  it("mount-sync-empty-deps.tsx reports the other messageId, gated the other way", async () => {
+    const { judge } = createMockJudge(replacing("mount_effect"))
+    const report = await runFixture("should-warn/mount-sync-empty-deps.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.errors).toEqual([])
+    expect(report.findings.length).toBe(1)
+    const finding = report.findings[0]!
+    expect(finding.messageId).toBe("wrapMountEffect")
+    expect(finding.message).toContain("mount-only sync with `hostRef.current`")
+    // `readsOutsideDeps` reaches the message only as a `key` suggestion, and
+    // never as "add it to the dependency array".
+    expect(finding.message).toContain(
+      "it also reads `initialValue`, so pass `key={initialValue}`",
+    )
+    expect(finding.facts["depsKind"]).toBe("empty")
+    expect(finding.facts["hasCleanup"]).toBe(true)
+  })
+})
+
+describe("react/useeffect-alternatives — should-pass and not-a-candidate", () => {
+  it("websocket-subscription.tsx reaches the model and reports nothing", async () => {
+    // Live, this is the highest-stakes case in the rule: keep_effect 0.98,
+    // keep-family mass 0.98 (CALIBRATION.md case 1).
+    const { judge, calls } = createMockJudge(
+      () => ({ replacement: { choice: "keep_effect", probabilities: { keep_effect: 0.98, external_store: 0.02 } } }),
+    )
+    const report = await runFixture("should-pass/websocket-subscription.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(calls.length).toBe(1)
+    expect(report.stats.judged).toBe(1)
+    expect(report.findings).toEqual([])
+    expect(report.errors).toEqual([])
+  })
+
+  it("not-react-useeffect.tsx never becomes a candidate", async () => {
+    const { judge, calls } = createMockJudge(replacing("render_computation"))
+    const report = await runFixture("not-a-candidate/not-react-useeffect.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.stats.candidates).toBe(0)
+    expect(calls.length).toBe(0)
+    expect(report.stats.requests).toBe(0)
+    expect(report.findings).toEqual([])
+    expect(report.errors).toEqual([])
+  })
+})
+
+describe("two rules over one unit — the batching proof", () => {
+  it("batches a memo and an effect into a single request", async () => {
+    // SPEC §2: batching is the runner's job. `dep-array.tsx` has one useMemo
+    // and one useEffect in the same component, so the seven slices are built
+    // once and both rules' questions ride on one request.
+    const script: MockScript = () => ({
+      cost: 0.1,
+      identity_matters: 0.93,
+      replacement: "keep_effect",
+    })
+    const { judge, calls } = createMockJudge(script)
+    const report = await runFixture("should-pass/dep-array.tsx", { judge, ruleFilter: null })
+
+    expect(report.errors).toEqual([])
+    expect(calls.length).toBe(1)
+    expect(report.stats.requests).toBe(1)
+    // Two candidates in one request: `stats.judged` counts participants.
+    expect(report.stats.judged).toBe(2)
+
+    expect(Object.keys(calls[0]!.state).sort()).toEqual([
+      "callee_sources",
+      "component_source",
+      "component_state",
+      "effect_body",
+      "effect_call",
+      "memo_call",
+      "value_usages",
+    ])
+    expect(Object.keys(calls[0]!.questions).sort()).toEqual([
+      "react/pointless-usememo::cost",
+      "react/pointless-usememo::identity_matters",
+      "react/useeffect-alternatives::replacement",
+    ])
+    expect(report.findings).toEqual([])
   })
 })

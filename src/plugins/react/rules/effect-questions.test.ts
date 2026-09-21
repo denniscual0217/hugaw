@@ -1,0 +1,80 @@
+import { describe, expect, it } from "vitest"
+import { assertJson } from "../../../core/index.js"
+import { KEEP_FAMILY, REPLACEMENTS, effectQuestions, replacement } from "./effect-questions.js"
+
+const LABELS = Object.keys(REPLACEMENTS)
+
+describe("the replacement Choice", () => {
+  it("compiles structured criteria through `choice()` and puts them on the wire", () => {
+    // The point of widening `ChoiceCriterion`: without it these objects do not
+    // pass the factory, and without `assertJson` passing they do not reach the
+    // model. Both halves asserted here, because a cast would hide the first
+    // and only the second would fail — at runtime, on a live request.
+    expect(replacement.type).toBe("choice")
+    expect(() => assertJson(replacement.criteria, "criteria")).not.toThrow()
+    expect(Object.keys(replacement.criteria)).toEqual(LABELS)
+  })
+
+  it("anchors the list on the null hypothesis", () => {
+    expect(LABELS[0]).toBe("keep_effect")
+  })
+
+  it("offers one option per outcome, with the two merges the corrections require", () => {
+    // `use_memo` folded into `render_computation` (one decision, not two), and
+    // `use_linked_state` replaced by what SKILL.md §6 actually prescribes.
+    expect(LABELS).not.toContain("use_memo")
+    expect(LABELS).not.toContain("use_linked_state")
+    expect(LABELS).toContain("render_computation")
+    expect(LABELS).toContain("derive_by_id")
+    expect(LABELS).toHaveLength(13)
+  })
+
+  it("gives every option all three fields", () => {
+    for (const [label, criterion] of Object.entries(REPLACEMENTS)) {
+      for (const field of ["description", "evidence", "contrast"] as const) {
+        expect(criterion[field].length, `${label}.${field}`).toBeGreaterThan(40)
+      }
+    }
+  })
+
+  it("makes every option's contrast name at least one neighbour it is not", () => {
+    // A thirteen-way choice is thirteen plausible readings of the same effect.
+    // An option whose criterion never says which neighbour it is not has no
+    // way to lose to that neighbour on evidence.
+    for (const [label, criterion] of Object.entries(REPLACEMENTS)) {
+      const named = LABELS.filter((other) => other !== label && criterion.contrast.includes(other))
+      expect(named.length, `${label} names no neighbour`).toBeGreaterThan(0)
+    }
+  })
+
+  it("pairs the two that SKILL.md's own example satisfies at once", () => {
+    // `postLike(); setLiked(false)` matches both criteria; the contrast has to
+    // say which wins and why, in both directions.
+    expect(REPLACEMENTS.event_handler.contrast).toContain("collapse_to_handler")
+    expect(REPLACEMENTS.collapse_to_handler.contrast).toContain("event_handler")
+    expect(REPLACEMENTS.event_handler.contrast).toContain("outward action decides")
+  })
+
+  it("contrasts module_init with keep_effect in both directions", () => {
+    expect(REPLACEMENTS.module_init.contrast).toContain("keep_effect")
+    expect(REPLACEMENTS.keep_effect.contrast).toContain("module_init")
+  })
+
+  it("keys `key_prop` on every state the unit declares, not on a setter count", () => {
+    expect(REPLACEMENTS.key_prop.evidence).toContain("every state the component declares")
+  })
+
+  it("lists exactly the outcomes that leave the effect in place", () => {
+    expect([...KEEP_FAMILY].sort()).toEqual(["effect_event", "keep_effect", "mount_effect"])
+    for (const label of KEEP_FAMILY) expect(LABELS).toContain(label)
+  })
+})
+
+describe("the question set", () => {
+  it("asks one question, because the second could not gate", () => {
+    // Measured over 17 cases: keep-family mass separates the two families
+    // (deletes <= 0.18, keeps >= 0.95) where both Noul wordings overlapped.
+    // See CALIBRATION.md.
+    expect(Object.keys(effectQuestions)).toEqual(["replacement"])
+  })
+})

@@ -165,7 +165,9 @@ MVP placeholders behind real interfaces.
 
 `TYPESAFE_API_KEY` comes from the environment only, never the config file.
 
-## The one MVP rule — `react/pointless-usememo`
+## Rules
+
+### `react/pointless-usememo`
 
 `select` finds every `useMemo` imported from React (named, namespace or default import,
 resolved syntactically so no `@types/react` is required). That is the *only* static gate:
@@ -214,7 +216,7 @@ collection's size is *bounded in the code we sent* — an inline literal versus 
 that could hold thousands of entries — rather than on whether a collection is "typically
 small", which is a runtime guess the model has no evidence for.
 
-### Does the memo skip work on renders that actually happen?
+#### Does the memo skip work on renders that actually happen?
 
 A `useMemo` also earns its keep by doing nothing on renders where its deps are unchanged, and
 that is **computed, never asked**: `renderTriggers` collects the component's reactive inputs
@@ -252,6 +254,58 @@ never seen.
 A caveat names the blind spot it actually found: usages hidden behind a spread and usages
 that could not be classified are counted and worded separately, so an agent is never sent
 hunting for a spread that is not there.
+
+### `react/useeffect-alternatives`
+
+`select` finds every `useEffect` imported from React. `useLayoutEffect` and
+`useInsertionEffect` are not candidates: their existence is usually justified by timing, and
+the decision matrix this rule encodes does not address them. There is no `skip`.
+
+The rule asks the model **one** question — a thirteen-way choice over what should happen to
+the effect — and gates on the answer's *shape* rather than on a second opinion:
+
+```ts
+keepFamilyMass = P(keep_effect) + P(mount_effect) + P(effect_event)
+```
+
+Above `KEEP_FAMILY_MASS_MAX` (0.5) the rule stays quiet; below it, the mode decides which fix
+to print. A second question was written, measured over 17 cases and deleted — the Choice's own
+distribution separates "this must go" from "this must stay" by a gap with nothing in it
+(≤ 0.17 against ≥ 0.92), where the second question's two wordings both overlapped.
+`CALIBRATION.md` has the numbers.
+
+Summing the family, rather than reading the mode, is the whole point. A distribution like
+`{keep .30, effect_event .12, mount .05, render .31, memo .22}` has a delete-family mode and
+47% of its belief on leaving the effect alone; the mode reports it and prints "30%".
+
+Two findings, gated in opposite directions:
+
+- **`replaceEffect`** — the effect should not exist. One dense line: what it does, then the
+  fix. The observation half is built from static facts only (`sets \`filtered\` from
+  \`products\``, `calls \`fetchProduct(productId)\` and sets \`product\``), because the fix is a
+  judgment and is allowed to be wrong, but the sentence describing the code an agent is about
+  to delete has to be true of it.
+- **`wrapMountEffect`** — the effect is genuine mount-only synchronisation and should be
+  wrapped in the project's `useMountEffect`. This one requires the mode to *be* `mount_effect`,
+  not merely the evidence for it: SKILL.md's canonical `useSyncExternalStore` example has empty
+  deps, a cleanup and listeners, which is `mount_effect`'s stated evidence verbatim, and telling
+  a reader to wrap it would be the opposite of the right answer.
+
+Four slices go on the wire. `component_state` (unit-scoped) carries the props, every
+`useState`/`useReducer` pair, and every write site classified by the kind of function it sits
+in — `render`, `effect`, `handler`, `callback` — which is what lets "the handler could have
+done this directly" be evidence rather than a guess. It also carries each hook result with the
+*hook that produced it*, so `const { data } = useGetProductQuery()` can be told from
+`const [data] = useToggle()`. `effect_call` carries the deps, their kind, cleanup detection and
+the values the effect reads but does not list. `effect_body` classifies every call in the body
+by origin — state setter, callback prop, same-file, imported, hook result, global, member,
+unresolved — with the nesting that distinguishes `setNow()` in the body from the same call
+inside a `setInterval` callback.
+
+**What this rule does not do.** It is not `exhaustive-deps`: values read outside the dependency
+array are carried as a fact and surface only as a `key={…}` suggestion on a mount finding,
+never as "add it to the dependency array". It does not detect conditional hooks, does not
+report state mutation during render, and has no `--fix`.
 
 ## Development
 

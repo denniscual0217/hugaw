@@ -23,7 +23,31 @@ export function fixturePath(relative: string, rule: string = DEFAULT_RULE): stri
 
 export interface RunFixtureOptions {
   readonly judge: Judge
+  /**
+   * The rule the fixture belongs to: both the directory under `fixtures/` and,
+   * by default, the only rule allowed to run.
+   *
+   * This is a *redefinition*. The field used to be a bare `ruleFilter`
+   * passthrough taking a full rule id, with the fixture directory always the
+   * default — no caller ever set it, so nothing moves, but the two meanings
+   * are easy to confuse and only one of them is now supported.
+   *
+   * The filter matters because rules are batched per unit, not per file.
+   * `fixtures/pointless-usememo/should-pass/dep-array.tsx` contains a
+   * `useEffect`; once a second rule selects those, the memo suite's requests
+   * carry two candidates, `stats.judged` counts participants rather than
+   * candidates-of-the-rule-under-test (`runner.ts`), and assertions like
+   * `expect(report.stats.judged).toBe(1)` fail for a reason that has nothing
+   * to do with what the test is about. Scoping each fixture run to its own
+   * rule keeps a suite measuring its own rule.
+   */
   readonly rule?: string
+  /**
+   * Overrides the filter `rule` implies: a full rule id, or `null` to run
+   * every enabled rule. `null` is how the batching proof — one request, two
+   * rules, one unit — gets written.
+   */
+  readonly ruleFilter?: string | null
   readonly model?: string
 }
 
@@ -32,17 +56,21 @@ export interface RunFixtureOptions {
  * directly, so a fixture failure is never a config-loading failure.
  */
 export async function runFixture(relative: string, options: RunFixtureOptions): Promise<RunReport> {
+  const rule = options.rule ?? DEFAULT_RULE
   const config = resolveConfig({
     files: ["**/*.{ts,tsx}"],
     model: options.model ?? "jev-1.13.0",
     plugins: [react],
   })
+  // `resolveRules` defaults every unlisted rule to its own `defaultSeverity`,
+  // so the filter — not the config's `rules` map — is what scopes a run.
+  const ruleFilter = options.ruleFilter === undefined ? `react/${rule}` : options.ruleFilter
   return runLint({
     config,
     adapters: [typescriptAdapter],
     judge: options.judge,
     cwd: REPO_ROOT,
-    files: [fixturePath(relative)],
-    ...(options.rule === undefined ? {} : { ruleFilter: options.rule }),
+    files: [fixturePath(relative, rule)],
+    ...(ruleFilter === null ? {} : { ruleFilter }),
   })
 }
