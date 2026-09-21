@@ -65,56 +65,58 @@ kept in the ablation file so this table can be re-derived, and nowhere else.
 
 | # | case | mode | mass | keepFam | runner-up | noul¹ | noul² |
 |---|---|---|---:|---:|---|---:|---:|
-| 1 | websocket chat room | `keep_effect` | 0.99 | **0.99** | external_store 0.01 | 0.44 | 0.94 |
-| 2 | online/offline mirror (SKILL.md §11) | `external_store` | 0.98 | **0.02** | mount_effect 0.01 | 0.27 | 0.59 |
-| 3 | setInterval clock | `keep_effect` | 0.64 | **0.91** | mount_effect 0.27 | 0.41 | 0.85 |
-| 4 | derived state (SKILL.md §1) | `render_computation` | 1.00 | **0.00** | — | 0.11 | 0.03 |
-| 5 | selection reset on `[items]` (SKILL.md §6) | `derive_by_id` | 0.88 | **0.00** | key_prop 0.11 | 0.13 | 0.03 |
-| 6 | profile reset on `[userId]` (SKILL.md §5) | `key_prop` | 0.98 | **0.00** | use_linked_state 0.01 | 0.12 | 0.03 |
-| 7 | LikeButton flag (SKILL.md §4) | `event_handler` | 1.00 | **0.00** | — | 0.13 | 0.09 |
-| 8 | notify parent of a toggle (SKILL.md §8) | `notify_parent` | 1.00 | **0.00** | — | 0.13 | 0.05 |
-| 9 | child bubbles query data up (SKILL.md §9) | `lift_fetch` | 0.91 | **0.08** | effect_event 0.06 | 0.19 | 0.06 |
-| 10 | fetch on id change, callee cross-file (SKILL.md §3) | `data_library` | 0.95 | **0.04** | keep_effect 0.04 | 0.19 | 0.14 |
-| 11 | auth from storage on `[]` (SKILL.md §10) | `module_init` | 0.99 | **0.01** | mount_effect 0.01 | 0.15 | 0.28 |
-| 12 | ResizeObserver on `[]`, writes width to state (SKILL.md §12) | `external_store` | 0.65 | **0.35** | mount_effect 0.22 | 0.45 | 0.88 |
-| 13 | `document.title` on `[title]` | `keep_effect` | 0.98 | **0.98** | render_computation 0.02 | 0.17 | 0.40 |
-| 14 | effect inside a custom hook — no parent, no props | `notify_parent` | 0.93 | **0.06** | keep_effect 0.03 | 0.17 | 0.06 |
-| 15 | no dependency array at all | `keep_effect` | 0.96 | **1.00** | mount_effect 0.04 | 0.22 | 0.81 |
-| 16 | `async` callback with `.then(setX)` | `data_library` | 0.96 | **0.04** | keep_effect 0.04 | 0.17 | 0.14 |
-| 17 | third-party widget on `[]`, no state written *(control for 12)* | `mount_effect` | 0.63 | **0.98** | keep_effect 0.34 | 0.44 | 0.92 |
+| 1 | websocket chat room | `keep_effect` | 0.99 | **0.99** | external_store 0.01 | 0.48 | 0.93 |
+| 2 | online/offline mirror (SKILL.md §11) | `external_store` | 0.98 | **0.02** | mount_effect 0.02 | 0.29 | 0.65 |
+| 3 | setInterval clock | `mount_effect` | 0.50 | **0.93** | keep_effect 0.43 | 0.40 | 0.84 |
+| 4 | derived state (SKILL.md §1) | `render_computation` | 1.00 | **0.00** | — | 0.10 | 0.02 |
+| 5 | selection reset on `[items]` (SKILL.md §6) | `derive_by_id` | 0.92 | **0.00** | key_prop 0.07 | 0.12 | 0.02 |
+| 6 | profile reset on `[userId]` (SKILL.md §5) | `key_prop` | 0.99 | **0.00** | derive_by_id 0.01 | 0.13 | 0.03 |
+| 7 | LikeButton flag (SKILL.md §4) | `event_handler` | 1.00 | **0.00** | — | 0.14 | 0.10 |
+| 8 | notify parent of a toggle (SKILL.md §8) | `notify_parent` | 1.00 | **0.00** | — | 0.13 | 0.06 |
+| 9 | child bubbles query data up (SKILL.md §9) | `lift_fetch` | 0.89 | **0.10** | effect_event 0.08 | 0.20 | 0.06 |
+| 10 | fetch on id change, callee cross-file (SKILL.md §3) | `data_library` | 0.96 | **0.04** | keep_effect 0.04 | 0.18 | 0.13 |
+| 11 | auth from storage on `[]` (SKILL.md §10) | `module_init` | 0.99 | **0.01** | mount_effect 0.01 | 0.14 | 0.27 |
+| 12 | ResizeObserver on `[]`, writes width to state (SKILL.md §12) | `external_store` | 0.65 | **0.35** | mount_effect 0.31 | 0.50 | 0.86 |
+| 13 | `document.title` on `[title]` | `keep_effect` | 0.97 | **0.97** | render_computation 0.03 | 0.18 | 0.40 |
+| 14 | effect inside a custom hook — no parent, no props | `notify_parent` | 0.93 | **0.05** | keep_effect 0.03 | 0.16 | 0.06 |
+| 15 | no dependency array at all | `keep_effect` | 0.97 | **1.00** | mount_effect 0.03 | 0.24 | 0.80 |
+| 16 | `async` callback with `.then(setX)` | `data_library` | 0.96 | **0.04** | keep_effect 0.04 | 0.18 | 0.13 |
+| 17 | third-party widget on `[]`, no state written *(control for 12)* | `mount_effect` | 0.72 | **0.97** | keep_effect 0.24 | 0.46 | 0.92 |
+| 18 | focus a conditionally rendered input (the Modal shape) | `ref_callback` | 0.98 | **0.02** | keep_effect 0.02 | 0.26 | 0.85 |
+| 19 | focus an always-mounted input, keyed to another prop | `keep_effect` | 0.85 | **0.85** | ref_callback 0.14 | 0.23 | 0.79 |
+| 20 | scroll a conditionally rendered node into view | `ref_callback` | 0.75 | **0.25** | keep_effect 0.25 | 0.23 | 0.78 |
+| 21 | measure a node on mount and store the width | `keep_effect` | 0.69 | **0.73** | ref_callback 0.15 | 0.21 | 0.38 |
+| 22 | cascading state, first effect (`count` -> `isTen`) | `render_computation` | 0.53 | **0.01** | collapse_to_handler 0.46 | 0.13 | 0.02 |
+| 23 | cascading state, second effect (`isTen` -> `message`) | `collapse_to_handler` | 0.58 | **0.01** | render_computation 0.41 | 0.12 | 0.02 |
 
-~4,350 input tokens per case, 73,877 for the run = **$0.0031**. Six runs across four payload
-revisions gave the same mode on all 17 cases, so these numbers are reproducible rather than a
-single sample. Run-to-run drift is within 0.03 except where noted under case 12 below.
+~4,770 input tokens per case, 109,813 for the run = **$0.0046**. The run is now 23 cases: the
+plan's 16, the mount control (17), four for `ref_callback` (18–21) and the two links of one
+state chain (22–23).
 
-> **Re-measured 2026-09-22** after the criteria collapsed from
-> `{description, evidence, contrast}` to one string per label. The words are unchanged — the
-> collapse is the three fields joined, verified byte for byte — so this run isolates the
-> effect of the *shape*. **No case changed mode**, and every case got exactly 308 tokens
-> cheaper: 4,654 -> 4,346 per request, 6.6% of the payload, for keys the model was not using.
+> **Re-measured 2026-09-22**, twice over, for two changes made together: the `ref_callback`
+> option was added, and the Choice's instructions stopped telling the model to read a
+> `contrast` field that the criteria have not had since they collapsed to strings. Both move
+> the payload. The instruction fix mattered more than expected — case 12 read 0.44–0.50 while
+> the prompt named a missing field, and 0.35 once it did not.
 
 ### The thresholds, and the measurement behind each
 
 **`KEEP_FAMILY_MASS_MAX = 0.5`** — the gate. Sorted, the keep-family mass is:
 
 ```
-must be deleted (12)   0.00 ×5   0.01   0.02   0.04 ×2   0.06   0.08   0.35          ← max 0.35
-must be kept     (5)                          0.91   0.98 ×2   0.99   1.00   ← min 0.91
+must be deleted (16)   0.00 ×5   0.01 ×3   0.02 ×2   0.04 ×2   0.05   0.10   0.25   0.35          ← max 0.35
+must be kept     (7)   0.73   0.85   0.93   0.97 ×2   0.99   1.00   ← min 0.73
 ```
 
-The 5 zeros are cases 4, 5, 6, 7 and 8; the 0.35 is case 12, discussed below. Nothing
-lands between 0.35 and 0.91. 0.5 sits 0.15 above the highest delete and 0.41 below the lowest
-keep, and every one of the 17 cases falls on the correct side. By analogy with
+Nothing lands between 0.35 and 0.73. 0.5 sits 0.15 above the highest delete and 0.23 below
+the lowest keep, and every case falls on the correct side. By analogy with
 `UNBOUNDED_WORK_MASS_MIN`, which is the same shape of decision on the memo rule.
 
 **`EITHER_OR_MIN = 0.10`** — when the runner-up's fix is printed as an alternative. The
-largest delete-family runner-up in the table is 0.03; the largest of any kind is `keep_effect`
-at 0.34 on case 17, which prints as a caveat rather than as an alternative. Before the
-criteria split the delete-family maximum was `key_prop` at 0.13 on case 5, which is the case
-this threshold was set from; sharper criteria have made every distribution more one-sided, so
-the bar now fires less often than when it was chosen. The plan's guessed 0.25 would have fired twice in seventeen, both times on a keep-family
-runner-up, which prints as a caveat rather than an alternative — i.e. never where an
-alternative fix is useful.
+largest runner-up in the table is `collapse_to_handler` at 0.46 on case 22, which is the
+genuine near-tie this threshold exists for: a chain whose first link is also a plain
+derivation. The next are 0.25 (case 12) and 0.24 (case 17). The plan's guessed 0.25 would
+have fired on one case in twenty-three.
 
 There are no other thresholds. The rule has no confidence gate: `choice.confidence` is carried
 in facts so it can be ablated later, and low confidence *between two delete outcomes* is still

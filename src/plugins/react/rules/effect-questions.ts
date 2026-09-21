@@ -10,7 +10,7 @@ import { choice } from "../../../core/index.js";
  */
 
 /**
- * Fourteen outcomes, ordered so the null hypothesis anchors the list: keep it,
+ * Fifteen outcomes, ordered so the null hypothesis anchors the list: keep it,
  * then the families that delete it (derive, handler, fetch, store, out of
  * React), then the two that keep it in a different wrapper.
  *
@@ -25,14 +25,14 @@ import { choice } from "../../../core/index.js";
  *
  * Two structural decisions are recorded here rather than in the plan:
  *
- * ** absorbed .** Both mean "delete the effect
+ * **`render_computation` absorbed `use_memo`.** Both mean "delete the effect
  * and compute during render"; they differ only in whether the computation is
  * expensive enough to memoise, which is a cost question, not a question about
  * whether the effect should exist. Splitting them made one option's criterion
  * the *absence* of evidence for the other — and when both rules fire on one
- * unit the memo rule's calibrated  score answers the cost half for free.
+ * unit the memo rule's calibrated `cost` score answers the cost half for free.
  *
- * ** was added, and  kept.** SKILL.md §6
+ * **`derive_by_id` was added, and `use_linked_state` kept.** SKILL.md §6
  * answers "adjust a slice of state when a prop changes" with *store the id and
  * derive the object during render*, so that option says what the skill says.
  * The two are not alternatives: they split on what the effect *writes* — a
@@ -51,6 +51,8 @@ export const REPLACEMENTS = {
     "Delete the effect and the state it clears. When a prop changes, this effect *clears* one slice of state — typically a selection, because the list it pointed into changed. The user's contribution here is a choice, and a choice can be kept as an id: store `selectedId` and derive the object during render (`const selection = items.find(i => i.id === selectedId) ?? null`). It is then correct in the same render with no effect and no stale window, and when the prop changes the lookup simply finds nothing, which is the reset the effect was doing by hand. One `state-setter` whose argument is a constant or the state's own initial value — `null`, `''`, `[]` — with no `inputs` taken from the dependency, keyed on the prop or collection the value points into. The same state is also written `within: \"handler\"`, because the user picks it. Not `use_linked_state`: the whole difference is *what the effect writes*. Here it clears the state to a constant, so the user's choice survives as an id and is looked up again; there it writes a value computed from the source, which no stored id can reconstruct. Read the setter's argument to tell them apart. Not `key_prop`: only this one slice follows the prop, and every other state the component declares must survive the change. Not `render_computation`: the user writes this state directly too, so it is not a pure derivation — what gets derived is the object the stored id points at.",
   key_prop:
     "Delete it. It resets the state this component declares when an identity prop changes, which React does natively by remounting — pass `key={thatProp}` where the component is rendered and the state resets with no choreography at all. `state-setter` calls whose arguments are constants or the states' own initial values, covering every state the component declares in `component_state.state`, all keyed on one id-like dependency. Not `derive_by_id`: that adjusts a single slice while the rest persists; this one wipes the lot, which is what makes remounting the right instrument. Not `render_computation`: nothing is being computed, state is being cleared.",
+  ref_callback:
+    "Delete the effect and do the work in a ref callback. React runs a ref callback with the node as soon as it is attached, and with `null` when it is detached, so work whose only trigger is *the element appearing* — focusing it, scrolling it into view, selecting its text — belongs there rather than in an effect: `<input ref={(node) => { if (node) node.focus() }} />`. There is no dependency array to keep in sync, and it runs before the browser paints. Three things together, and all three are needed: `effect_body.externals` names a `<ref>.current` bound from React's `useRef`; the body is guarded on the same value `effect_call.deps` lists; and `component_source` shows that value deciding whether the element is rendered at all, as a conditional `<input ref={…} />` or an early `return null`. That combination means the dependency is not a value the work depends on, it is a proxy for whether the node exists. The test is that a ref callback fires when the node is attached and when it is detached, and at no other time. Not `keep_effect` where the element is rendered unconditionally in `component_source` and the effect re-runs because some *other* value changed: a ref callback would fire once at mount and never again, silently dropping every later run, so that case stays an effect. Not `keep_effect` either where the work sets up something that outlives the node or reaches a system outside this component, such as a subscription, a connection, or an observer you keep and tear down. Not `mount_effect`: that is per instance, with empty dependencies and a teardown, where this is per *node* and has no dependency array at all. An effect that *measures* a node and writes the result into state is not this option either: the measurement has to be repeated when the thing being measured changes, which a ref callback will not do.",
   event_handler:
     "Delete it. The work belongs in the event handler that caused it: a user interaction set a flag or a value, the effect noticed on the next render, and the handler could have done the work directly — a POST, a notification, a navigation. The dependency is state written only within a handler, often tested for truthiness at the top of the effect, and the body performs an outward action: a call in `effect_body.calls` that is `imported`, `same-file`, `global` or `member` rather than a state-setter. Not `collapse_to_handler`: the outward action decides. A body that posts, navigates or notifies is this option even when it also resets the flag afterwards — the two together (`postLike(); setLiked(false)`) are the canonical shape of *this* option, not of the other. Not `notify_parent`: the callee is an external action, not a callback the parent passed in.",
   collapse_to_handler:
@@ -103,7 +105,7 @@ export const KEEP_FAMILY: ReadonlySet<string> = new Set([
  * do when two questions disagree.
  */
 export const replacement = choice(
-  'What should happen to the effect in `effect_call`? Pick the single best-fitting outcome. Use `effect_body` for what it calls and touches, `component_state` for which state it writes and where else that state is written, and `component_source` for the whole picture. Each option\'s `contrast` names the neighbour it is not and says what would have made that neighbour win. When `component_state.owner.kind` is `"hook"` the unit is a custom hook, not a component: "the parent" means the caller of the hook, and a `prop-callback` is an argument the caller passed in.',
+  'What should happen to the effect in `effect_call`? Pick the single best-fitting outcome. Use `effect_body` for what it calls and touches, `component_state` for which state it writes and where else that state is written, and `component_source` for the whole picture. Each option\'s text says what it means, what evidence in `effect_body`, `component_state` or `effect_call` answers it, and which neighbouring option it is not. When `component_state.owner.kind` is `"hook"` the unit is a custom hook, not a component: "the parent" means the caller of the hook, and a `prop-callback` is an argument the caller passed in.',
   REPLACEMENTS,
 );
 

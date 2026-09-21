@@ -278,6 +278,7 @@ const FIXES: [string, string][] = [
   ["render_computation", "compute it during render"],
   ["use_linked_state", "keep it editable by replacing the `isOn` state and the effect with `useLinkedState(isOn, …)`"],
   ["derive_by_id", "keep only the id in state"],
+  ["ref_callback", "do the work in a ref callback"],
   ["key_prop", "render `Toggle` with `key={isOn}`"],
   ["event_handler", "do that work in the handler that sets `isOn`"],
   ["collapse_to_handler", "compute the whole next state in the handler"],

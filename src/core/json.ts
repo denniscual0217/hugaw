@@ -6,7 +6,15 @@ export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 export type JsonObject = { [key: string]: JsonValue }
 
-/** Throws if `value` is not JSON-serialisable. Used at the slice boundary. */
+/**
+ * Throws if `value` is not JSON-serialisable.
+ *
+ * **Not currently wired into the runner** — only tests call it, so a slice
+ * returning something unserialisable fails later, inside `JSON.stringify`,
+ * with no slice name and no path to the offending field. Calling it where
+ * `extract()` returns would cost one pass over each slice and buy a precise
+ * error; that is a deliberate open question, not an oversight.
+ */
 export function assertJson(value: unknown, what: string): asserts value is JsonValue {
   const seen = new WeakSet<object>()
   const walk = (v: unknown, path: string): void => {

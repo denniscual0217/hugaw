@@ -27,7 +27,8 @@ describe("the replacement Choice", () => {
     // a constant it clears, or a value seeded from the source.
     expect(LABELS).toContain("derive_by_id")
     expect(LABELS).toContain("use_linked_state")
-    expect(LABELS).toHaveLength(14)
+    expect(LABELS).toContain("ref_callback")
+    expect(LABELS).toHaveLength(15)
   })
 
   it("sends one string per label, not a structured object", () => {
@@ -99,5 +100,33 @@ describe("the question set", () => {
     // (deletes <= 0.18, keeps >= 0.95) where both Noul wordings overlapped.
     // See CALIBRATION.md.
     expect(Object.keys(effectQuestions)).toEqual(["replacement"])
+  })
+})
+
+describe("ref_callback, the option nearest the keep family", () => {
+  /**
+   * Every other option describes something the keep family does not. This
+   * one describes imperative work on a DOM node, which is what `keep_effect`
+   * and `mount_effect` are for — so its criterion has to carry the
+   * discriminator, and the discriminator is checkable: a ref callback fires
+   * when the node is attached and detached, and at no other time.
+   */
+  it("names the two keep-family options it competes with", () => {
+    expect(REPLACEMENTS.ref_callback).toContain("keep_effect")
+    expect(REPLACEMENTS.ref_callback).toContain("mount_effect")
+  })
+
+  it("rules out the always-mounted case explicitly", () => {
+    // The case that blurs: identical at the call site, but the node never
+    // goes away, so a ref callback would fire once and never again.
+    expect(REPLACEMENTS.ref_callback).toContain("rendered unconditionally")
+    expect(REPLACEMENTS.ref_callback).toContain("never again")
+  })
+
+  it("requires all three pieces of evidence, not any one of them", () => {
+    expect(REPLACEMENTS.ref_callback).toContain("all three are needed")
+    for (const field of ["effect_body.externals", "effect_call.deps", "component_source"]) {
+      expect(REPLACEMENTS.ref_callback, field).toContain(field)
+    }
   })
 })

@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 
-function Modal({ isOpen }) {
-  const inputRef = useRef(null);
+function Slider({ value, onChange }) {
+  const [currentValue, setCurrentValue] = useState(value);
 
   useEffect(() => {
-    if (isOpen) {
-      inputRef.current?.focus();
-    }
-  }, [isOpen]);
+    onChange(currentValue);
+  }, [currentValue, onChange]);
 
-  return isOpen ? <input ref={inputRef} /> : null;
+  return (
+    <input
+      type="range"
+      value={currentValue}
+      onChange={(e) => setCurrentValue(Number(e.target.value))}
+    />
+  );
 }
 
 // function Toggle({ onChange }) {

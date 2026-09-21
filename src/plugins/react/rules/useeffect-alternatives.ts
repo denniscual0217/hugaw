@@ -14,13 +14,13 @@ import type { Replacement } from "./effect-questions.js"
  * How much of the Choice's mass may sit on the three outcomes that leave the
  * effect in place before the rule stays quiet.
  *
- * Measured over 17 cases, not guessed: effects that must go summed to at most
- * 0.17 on the keep family, effects that must stay to at least 0.92, and
- * nothing landed in between. That gap is why this single number replaces the
- * Noul the plan gated on — that question's two wordings put keeps at
- * 0.16–0.48 and 0.41–0.93 against deletes at 0.10–0.47 and 0.03–0.87, which
- * overlap both times. 0.5 sits 0.33 above the highest delete and 0.42 below
- * the lowest keep. CALIBRATION.md has the table.
+ * Measured, not guessed: across the ablation's cases, effects that must go
+ * sum to at most 0.35 on the keep family and effects that must stay to at
+ * least 0.73, with nothing in between. That gap is why this single number
+ * replaces the Noul the plan gated on — that question's two wordings put
+ * keeps and deletes in overlapping ranges both times. CALIBRATION.md carries
+ * the current table and is the source of truth for these figures; a number
+ * repeated here goes stale the next time the option list changes.
  *
  * Mass, not the mode, and the distinction is the whole point: a distribution
  * like `{keep .30, effect_event .12, mount .05, render .31, memo .22}` has a
@@ -32,12 +32,11 @@ export const KEEP_FAMILY_MASS_MAX = 0.5
 /**
  * When the runner-up is worth printing.
  *
- * Measured: across 17 cases the largest runner-up inside the delete family is
- * 0.13 (`key_prop` against `derive_by_id`, two fixes that are genuinely both
- * defensible), and the largest of any kind is 0.32. The plan's guess of 0.25
- * would have fired twice in seventeen, both on a keep-family runner-up, which
- * prints as a caveat rather than as an alternative — i.e. never where a second
- * fix is what the reader needs.
+ * Measured: the largest runner-up in the ablation is a chain whose first link
+ * is also a plain derivation, where two fixes are genuinely both defensible.
+ * The plan's guess of 0.25 would have fired on one case in twenty-three.
+ * CALIBRATION.md has the figures; they are not repeated here because they
+ * move whenever an option is added.
  */
 export const EITHER_OR_MIN = 0.1
 
@@ -157,6 +156,9 @@ const FIX_PHRASE: Record<string, (facts: EffectFacts, aside: boolean) => string>
     facts.ownerKind === "hook"
       ? `delete it and give the component that calls \`${facts.owner}\` a \`key={${dep(facts)}}\` so React remounts it`
       : `delete it and render \`${facts.owner}\` with \`key={${dep(facts)}}\` so React remounts it`,
+  ref_callback: () =>
+    "do the work in a ref callback (`ref={(node) => { … }}`), which React runs as the node is " +
+    "attached, and delete the effect",
   event_handler: (facts) =>
     `do that work in the handler that sets \`${dep(facts)}\` and delete ` +
     `${describeWritten(facts, "the flag state and the effect", "the effect")}`,

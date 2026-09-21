@@ -464,6 +464,46 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(finding.facts["unresolvedWrites"]).toEqual(["setTotal"])
   })
 
+  it("ref-callback-on-open.tsx routes a conditionally rendered node to a ref callback", async () => {
+    // Measured live: `ref_callback` 0.98. The node exists only while
+    // `isOpen` is true, which is precisely when React runs a ref callback.
+    const { judge } = createMockJudge(replacing("ref_callback"))
+    const report = await runFixture("should-warn/ref-callback-on-open.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.errors).toEqual([])
+    expect(report.findings.length).toBe(1)
+    const finding = report.findings[0]!
+    expect(finding.facts["replacement"]).toBe("ref_callback")
+    expect(finding.message).toContain("do the work in a ref callback")
+    expect(finding.message).toContain("which React runs as the node is attached")
+  })
+
+  it("state-chain.tsx reports both links of the chain", async () => {
+    // Two candidates in one component, so two slots and two requests.
+    // Measured live the two links split: the second is
+    // `collapse_to_handler` 0.58, the first is a near-tie that lands
+    // `render_computation` 0.53 with `collapse_to_handler` 0.41 behind it.
+    // CALIBRATION.md records that; what this asserts is that both effects
+    // are found and both carry the label the judge returned.
+    const { judge, calls } = createMockJudge(replacing("collapse_to_handler"))
+    const report = await runFixture("should-warn/state-chain.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.errors).toEqual([])
+    expect(calls.length).toBe(2)
+    expect(report.findings.length).toBe(2)
+    for (const finding of report.findings) {
+      expect(finding.facts["replacement"]).toBe("collapse_to_handler")
+      expect(finding.message).toContain("compute the whole next state in the handler")
+    }
+    expect(report.findings.map((f) => f.loc.line)).toEqual([19, 23])
+  })
+
   it("fetch-cross-file.tsx caveats the callee it could not read", async () => {
     const { judge } = createMockJudge(replacing("data_library"))
     const report = await runFixture("should-warn/fetch-cross-file.tsx", {
@@ -515,6 +555,28 @@ describe("react/useeffect-alternatives — should-pass and not-a-candidate", () 
       () => ({ replacement: { choice: "keep_effect", probabilities: { keep_effect: 0.98, external_store: 0.02 } } }),
     )
     const report = await runFixture("should-pass/websocket-subscription.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(calls.length).toBe(1)
+    expect(report.stats.judged).toBe(1)
+    expect(report.findings).toEqual([])
+    expect(report.errors).toEqual([])
+  })
+
+  it("always-mounted-focus.tsx reaches the model and is refused", async () => {
+    // The `ref_callback` negative. Live it is `keep_effect` 0.85 — the node
+    // is never unmounted, so a ref callback would fire once and never again.
+    // Scripted here at the measured distribution rather than one-hot, so the
+    // gate is what suppresses it rather than the mock.
+    const { judge, calls } = createMockJudge(() => ({
+      replacement: {
+        choice: "keep_effect",
+        probabilities: { keep_effect: 0.85, ref_callback: 0.15 },
+      },
+    }))
+    const report = await runFixture("should-pass/always-mounted-focus.tsx", {
       judge,
       rule: EFFECT_RULE,
     })

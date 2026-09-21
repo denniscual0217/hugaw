@@ -38,7 +38,33 @@ interface Case {
   readonly expect: string
   readonly source: string
   readonly extra?: Record<string, string>
+  /** Which `useEffect` in the source to judge, when there is more than one. */
+  readonly pick?: number
 }
+
+/** Shared by cases 22 and 23: one component, two links of one chain. */
+const CHAIN_SOURCE = `import { useEffect, useState } from "react"
+
+export function Counter() {
+  const [count, setCount] = useState(0)
+  const [isTen, setIsTen] = useState(false)
+  const [message, setMessage] = useState("")
+
+  useEffect(() => {
+    if (count === 10) setIsTen(true)
+  }, [count])
+
+  useEffect(() => {
+    if (isTen) setMessage("Reached ten!")
+  }, [isTen])
+
+  return (
+    <div>
+      <button onClick={() => setCount(count + 1)}>+1</button>
+      {message}
+    </div>
+  )
+}`
 
 const CASES: readonly Case[] = [
   {
@@ -369,6 +395,82 @@ export function MarkdownEditor({ initialValue }) {
 }`,
     },
   },
+  {
+    n: 18,
+    name: "focus a conditionally rendered input (the Modal shape)",
+    expect: "ref_callback",
+    source: `import { useEffect, useRef } from "react"
+
+export function Modal({ isOpen }) {
+  const inputRef = useRef(null)
+  useEffect(() => {
+    if (isOpen) inputRef.current?.focus()
+  }, [isOpen])
+  return isOpen ? <input ref={inputRef} /> : null
+}`,
+  },
+  {
+    n: 19,
+    // The negative that decides whether the option is safe to ship. A ref
+    // callback fires when the node appears; here the node never goes away,
+    // so it would fire once at mount and never again.
+    name: "focus an always-mounted input, keyed to another prop",
+    expect: "NOT ref_callback",
+    source: `import { useEffect, useRef } from "react"
+
+export function SearchPanel({ activeTab }) {
+  const inputRef = useRef(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [activeTab])
+  return <input ref={inputRef} placeholder="Search" />
+}`,
+  },
+  {
+    n: 20,
+    name: "scroll a conditionally rendered node into view",
+    expect: "ref_callback, and not pinned to focus()",
+    source: `import { useEffect, useRef } from "react"
+
+export function ErrorBanner({ error }) {
+  const boxRef = useRef(null)
+  useEffect(() => {
+    if (error) boxRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [error])
+  return error ? <div ref={boxRef}>{error}</div> : null
+}`,
+  },
+  {
+    n: 21,
+    name: "measure a node on mount and store the width",
+    expect: "unknown: the shape most likely to drift",
+    source: `import { useEffect, useRef, useState } from "react"
+
+export function Chart({ data }) {
+  const hostRef = useRef(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    setWidth(hostRef.current.offsetWidth)
+  }, [])
+  return <div ref={hostRef}>{width} {data.length}</div>
+}`,
+  },
+  {
+    n: 22,
+    // The chain, first link. `setCount` in an `onClick` is what makes this a
+    // chain rather than a pair of derivations: without a handler starting it,
+    // `render_computation` is the better answer and the ordering flips.
+    name: "cascading state, first effect (count -> isTen)",
+    expect: "collapse_to_handler, render_computation runner-up",
+    source: CHAIN_SOURCE,
+  },
+  {
+    n: 23,
+    name: "cascading state, second effect (isTen -> message)",
+    expect: "collapse_to_handler, render_computation runner-up",
+    source: CHAIN_SOURCE,
+    pick: 1,
+  },
 ]
 
 interface Summary {
@@ -416,7 +518,7 @@ function buildState(testCase: Case): Record<string, unknown> {
 
   const call = file
     .getDescendantsOfKind(SyntaxKind.CallExpression)
-    .find((c: CallExpression) => isReactApi(c.getExpression(), "useEffect"))
+    .filter((c: CallExpression) => isReactApi(c.getExpression(), "useEffect"))[testCase.pick ?? 0]
   if (!call) throw new Error(`case ${testCase.n}: no React useEffect`)
   const unit = unitOf(call) as FunctionLike
 
@@ -518,7 +620,11 @@ describe.skipIf(!live)("rule #2 ablation — the two questions, live", () => {
     // the separation the Noul could not produce, and the only thing in this
     // file that is a claim rather than a record.
     for (const row of rows as { n: number; keepFamilyMass: number }[]) {
-      const keeps = [1, 3, 13, 15, 17].includes(row.n)
+      // Case 21 is exploratory — a DOM measurement written into state is
+      // genuinely arguable between keeping and replacing, and pinning it
+      // here would be asserting an answer we have not decided.
+      if (row.n === 21) continue
+      const keeps = [1, 3, 13, 15, 17, 19].includes(row.n)
       if (keeps) expect(row.keepFamilyMass, `case ${row.n} keeps`).toBeGreaterThan(KEEP_FAMILY_MASS_MAX)
       else expect(row.keepFamilyMass, `case ${row.n} deletes`).toBeLessThan(KEEP_FAMILY_MASS_MAX)
     }

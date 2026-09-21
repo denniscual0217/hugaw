@@ -12,7 +12,7 @@ itself. There is no `--fix`. **The message is the product.**
 
 ```
 fixtures/should-warn/constant-object.tsx
-  8:17  warning  useMemo has no effect — constant work, and `label` is only read at line 9; inline the expression and remove the dep array  react/pointless-usememo
+  8:17  warning  useMemo has no effect: constant work, and `label` is only read at line 9; inline the expression and remove the dep array  react/pointless-usememo
 
 ✖ 1 problem (0 errors, 1 warning)
 1 candidates, 0 skipped statically, 1 judged
@@ -63,7 +63,7 @@ export TYPESAFE_API_KEY=...   # or put it in .env; never in the config file
 ```
 hugaw [globs]
   --rule <id>          run only this rule
-  --format <name>      stylish (default) | json | eslint-formatter-*
+  --format <name>      stylish (default) | json | json-with-metadata | eslint-formatter-*
   --max-warnings <n>   exit 1 when warnings exceed this count (-1 disables)
   --max-findings <n>   truncate, announcing the truncation (0 disables)
   --dry-run            print the exact request payloads, call nothing
@@ -213,7 +213,7 @@ limit: the cost question asks how much work the computation does *per render*, s
 the component renders often does not, and should not, change the answer.
 
 Listing a plugin turns its rules on at their `meta.defaultSeverity`; `"off"` disables one.
-Rule options are `message` and `messageSuffix` only — thresholds are module constants in the
+Rule options are `message`, `messageSuffix` and `context` (above) — thresholds are module constants in the
 rule file, not config. `cache`, `limits` and `resolve` are accepted and type-checked but are
 MVP placeholders behind real interfaces.
 
@@ -315,18 +315,22 @@ hunting for a spread that is not there.
 `useInsertionEffect` are not candidates: their existence is usually justified by timing, and
 the decision matrix this rule encodes does not address them. There is no `skip`.
 
-The rule asks the model **one** question — a thirteen-way choice over what should happen to
-the effect — and gates on the answer's *shape* rather than on a second opinion:
+The rule asks the model **one** question: a choice over every outcome an effect can have, from
+keeping it as written to each of the ways it could be deleted. It gates on the answer's
+*shape* rather than on a second opinion:
 
 ```ts
 keepFamilyMass = P(keep_effect) + P(mount_effect) + P(effect_event)
 ```
 
-Above `KEEP_FAMILY_MASS_MAX` (0.5) the rule stays quiet; below it, the mode decides which fix
-to print. A second question was written, measured over 17 cases and deleted — the Choice's own
-distribution separates "this must go" from "this must stay" by a gap with nothing in it
-(≤ 0.17 against ≥ 0.92), where the second question's two wordings both overlapped.
-`CALIBRATION.md` has the numbers.
+Above `KEEP_FAMILY_MASS_MAX` (0.5) the rule stays quiet — with one exception: a `mount_effect`
+*mode* above the gate is the `wrapMountEffect` finding, since that one keeps the effect rather
+than deleting it. Below the gate the mode decides which fix to print, except that a keep-family
+mode is still refused, because a distribution that splits its belief across keeping and
+deleting is not evidence for either. A second question was written, measured and deleted: the Choice's own distribution separates
+"this must go" from "this must stay" by a gap with nothing in it, where the second question's
+two wordings both overlapped. `CALIBRATION.md` has the current numbers, and is the place to
+read them — they move whenever an option is added to the Choice.
 
 Summing the family, rather than reading the mode, is the whole point. A distribution like
 `{keep .30, effect_event .12, mount .05, render .31, memo .22}` has a delete-family mode and
@@ -397,7 +401,7 @@ pnpm build
 pnpm test:live     # HUGAW_LIVE=1, one opt-in call against the real API
 ```
 
-Fixtures live in three buckets that encode the cost model:
+Fixtures live in four buckets that encode the cost model:
 
 - `should-warn/` — reaches the model and reports
 - `should-skip/` — *(removed for `pointless-usememo`, which has no `skip`)* dropped before
@@ -410,7 +414,7 @@ Fixtures live in three buckets that encode the cost model:
 
 ## Adding fixtures for a new rule
 
-Fixtures live under `fixtures/<rule name>/`, in the same three buckets — `should-warn`,
+Fixtures live under `fixtures/<rule name>/`, in the same four buckets — `should-warn`,
 `should-skip` (only where the rule has a `skip`), `should-pass`, and `not-a-candidate` for
 cases `select` rejects. `_`-prefixed files are support files for the fixture
 beside them and stay in that bucket, because the fixture imports them by relative path.
@@ -429,7 +433,7 @@ Keep the set small and deliberate:
 
 Rough budget: about three fixtures, plus one per cross-file case.
 
-`pointless-usememo` predates this convention and carries ~35. They are kept because each one
+`pointless-usememo` predates this convention and carries 32, plus 5 support files. They are kept because each one
 encodes a real regression — several were added in response to a false positive on production
 code — but applying the convention retroactively would land somewhere around 12. Do not treat
 its fixture count as the standard to match.
