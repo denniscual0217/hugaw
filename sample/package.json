@@ -9,7 +9,10 @@
     "compare": "node compare.mjs"
   },
   "devDependencies": {
+    "@types/react": "^19.3.0",
     "eslint": "^9.39.1",
-    "eslint-plugin-react-you-might-not-need-an-effect": "^0.5.1"
+    "eslint-plugin-react-you-might-not-need-an-effect": "^0.5.1",
+    "react": "^19.3.0",
+    "typescript": "^7.0.2"
   }
 }
