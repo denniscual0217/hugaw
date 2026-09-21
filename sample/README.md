@@ -21,8 +21,12 @@ npm run eslint              # eslint-plugin-react-you-might-not-need-an-effect, 
 npm run hugaw               # hugaw, react/useeffect-alternatives only
 ```
 
-`npm run hugaw` needs `TYPESAFE_API_KEY` in the environment or in a `.env` beside it,
-and costs roughly $0.0006 per run (4 effects × ~3,600 tokens).
+`npm run hugaw` needs `TYPESAFE_API_KEY` in the environment or in a `.env` beside it. It
+reports what it spent on its own stats line, so there is no figure to keep up to date here:
+
+```
+5 candidates, 0 skipped statically, 5 judged · 21.5k tokens · $0.0009 @ $0.042/M
+```
 
 ## What `src/sample.tsx` is for
 

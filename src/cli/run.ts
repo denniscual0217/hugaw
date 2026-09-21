@@ -4,10 +4,11 @@ import type { Cache, Judge, LanguageAdapter, RunReport } from "../core/index.js"
 import { configSchema, noopCache, runLint, truncateFindings } from "../core/index.js"
 import { dryRun } from "../format/dry-run.js"
 import { externalFormatter, FormatterNotInstalledError } from "../format/external.js"
-import { json } from "../format/json.js"
+import { json, jsonWithMetadata } from "../format/json.js"
 import { stylish } from "../format/stylish.js"
 import { toEslint } from "../format/to-eslint.js"
-import type { Colors } from "../format/types.js"
+import type { Colors, EslintRulesMeta } from "../format/types.js"
+import { usageClause, usageMetadata } from "../format/usage.js"
 import { dryRunJudge } from "../judge/dry-run.js"
 import { defaultAdapters } from "./defaults.js"
 import { computeExitCode } from "./exit-code.js"
@@ -132,11 +133,23 @@ export async function run(flags: CliFlags, io: Io = defaultIo()): Promise<number
   const { findings, truncation } = truncateFindings(report.findings, flags.maxFindings)
   const results = toEslint(findings)
 
-  if (flags.format === "json") {
-    io.out(json(results))
-    // stdout stays pure JSON; stats go to stderr.
+  if (flags.format === "json" || flags.format === "json-with-metadata") {
+    io.out(
+      flags.format === "json"
+        ? json(results)
+        : jsonWithMetadata(results, {
+            rulesMeta: rulesMetaOf(config.plugins),
+            usage: usageMetadata(report.stats),
+          }),
+    )
+    // stdout stays pure JSON for both, so `| jq` works either way; the human
+    // stats line goes to stderr. The usage numbers are *in* the document for
+    // json-with-metadata and nowhere for json, which is what keeps `json` an
+    // unchanged LintResult[].
+    const usage = usageClause(report.stats)
     io.err(
-      `${report.stats.candidates} candidates, ${report.stats.skippedStatically} skipped statically, ${report.stats.judged} judged`,
+      `${report.stats.candidates} candidates, ${report.stats.skippedStatically} skipped statically, ` +
+        `${report.stats.judged} judged${usage === null ? "" : ` · ${usage}`}`,
     )
     if (truncation.truncated) {
       io.err(
@@ -176,8 +189,8 @@ export async function run(flags: CliFlags, io: Io = defaultIo()): Promise<number
 
 function rulesMetaOf(
   plugins: readonly { id: string; rules: readonly { name: string; meta: { description: string; docsUrl?: string } }[] }[],
-): Record<string, { type?: string; docs?: { description?: string; url?: string } }> {
-  const meta: Record<string, { type?: string; docs?: { description?: string; url?: string } }> = {}
+): EslintRulesMeta {
+  const meta: EslintRulesMeta = {}
   for (const plugin of plugins) {
     for (const rule of plugin.rules) {
       meta[`${plugin.id}/${rule.name}`] = {

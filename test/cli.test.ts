@@ -106,6 +106,65 @@ describe("hugaw CLI (built)", () => {
     expect(payload.stats.judged).toBe(0)
   })
 
+  it("--format json stays a bare LintResult array, with stats on stderr", async () => {
+    // The contract CI consumers index into. The usage numbers deliberately do
+    // not appear here — they went into a second formatter instead of being
+    // added as a sibling key, which would have broken every such consumer.
+    const { code, stdout, stderr } = await hugaw(
+      ["fixtures/pointless-usememo/not-a-candidate/not-react-usememo.tsx", "--format", "json"],
+      NO_NETWORK,
+    )
+    expect(code).toBe(0)
+    expect(stdout.trim()).toBe("[]")
+    expect(JSON.parse(stdout)).toBeInstanceOf(Array)
+    expect(stdout).not.toContain("metadata")
+    expect(stdout).not.toContain("tokens")
+    expect(stderr).toContain("0 candidates, 0 skipped statically, 0 judged")
+  })
+
+  it("--format json-with-metadata wraps the same array and adds usage", async () => {
+    const { code, stdout, stderr } = await hugaw(
+      [
+        "fixtures/pointless-usememo/not-a-candidate/not-react-usememo.tsx",
+        "--format",
+        "json-with-metadata",
+      ],
+      NO_NETWORK,
+    )
+    expect(code).toBe(0)
+
+    const payload = JSON.parse(stdout) as {
+      results: unknown[]
+      metadata: {
+        rulesMeta: Record<string, unknown>
+        usage: Record<string, unknown>
+      }
+    }
+    expect(payload.results).toEqual([])
+    expect(payload.metadata.rulesMeta["react/pointless-usememo"]).toBeDefined()
+    // Nothing was judged, so there is no model and therefore no price: the
+    // cost keys are absent rather than zero.
+    expect(payload.metadata.usage).toEqual({
+      model: null,
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    })
+    // stdout is still pure JSON, so `| jq` works for both formats.
+    expect(stdout.trimStart().startsWith("{")).toBe(true)
+    expect(stderr).toContain("candidates")
+  })
+
+  it("says nothing about cost on a run that spent nothing", async () => {
+    const { stdout } = await hugaw(
+      ["fixtures/pointless-usememo/not-a-candidate/not-react-usememo.tsx"],
+      NO_NETWORK,
+    )
+    expect(stdout).toContain("0 candidates, 0 skipped statically, 0 judged")
+    expect(stdout).not.toContain("tokens")
+    expect(stdout).not.toContain("$")
+  })
+
   it("exits 2 with a clear message when the API key is missing", async () => {
     const { code, stderr } = await hugaw(["fixtures/pointless-usememo/should-warn/arithmetic.tsx"], {
       TYPESAFE_API_KEY: "",

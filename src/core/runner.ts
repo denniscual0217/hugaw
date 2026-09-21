@@ -505,10 +505,12 @@ export async function runLint(input: RunInput): Promise<RunReport> {
           const { record, participants } = job
           const key = cacheKey(record.request)
           let response: JudgeResponse | null
+          let fromCache = false
           try {
             const cached = await cache.get(key)
             if (cached !== undefined) {
               response = cached
+              fromCache = true
             } else {
               response = await judge.judge(record.request)
               if (response !== null) await cache.set(key, response)
@@ -533,7 +535,12 @@ export async function runLint(input: RunInput): Promise<RunReport> {
           record.judged = true
           stats.requests++
           stats.judged += participants.length
-          if (response.usage) {
+          if (stats.model === null && response.model !== undefined) stats.model = response.model
+          // A cached answer was paid for once, on the run that produced it.
+          // The cache is a no-op today, so this branch is unreachable — it is
+          // written now because the alternative is a future cache that makes
+          // every run look like it spent full price.
+          if (response.usage && !fromCache) {
             stats.inputTokens += response.usage.input_tokens
             stats.outputTokens += response.usage.output_tokens
           }

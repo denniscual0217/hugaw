@@ -38,7 +38,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   cli
     .command("[...globs]", "Lint files with context-aware rules")
     .option("--rule <id>", "Run only this rule")
-    .option("--format <name>", "stylish (default) | json | eslint-formatter-*", { default: "stylish" })
+    .option("--format <name>", "stylish (default) | json | json-with-metadata | eslint-formatter-*", {
+      default: "stylish",
+    })
     .option("--max-warnings <n>", "Exit 1 when warnings exceed this count (-1 disables)", { default: -1 })
     .option("--max-findings <n>", "Truncate output, announcing the truncation (0 disables)", { default: 0 })
     .option("--dry-run", "Print the exact request payloads and call nothing")

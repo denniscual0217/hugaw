@@ -24,6 +24,12 @@ export interface EslintResult {
   usedDeprecatedRules: { ruleId: string; replacedBy: string[] }[]
 }
 
+/** ESLint's `rulesMeta`, as the external formatters and metadata output expect it. */
+export type EslintRulesMeta = Record<
+  string,
+  { type?: string; docs?: { description?: string; url?: string } }
+>
+
 /** The subset of a picocolors instance the formatters use. */
 export interface Colors {
   bold: (s: string) => string

@@ -96,6 +96,46 @@ An empty result is never silent:
 ✓ no findings · 14 candidates, 14 skipped statically, 0 judged
 ```
 
+### What the run cost
+
+Every run says what it spent, on the stats line rather than a line of its own:
+
+```
+38 candidates, 0 skipped statically, 38 judged · 55.3k tokens · $0.0022 @ $0.042/M
+```
+
+The rate is printed next to the total on purpose. Prices change, and a hard-coded price
+that has gone stale should be visible in the output rather than silently wrong. Pricing is
+a small table keyed by the model id the API *reports* — not the one configured, because
+`jev-latest` is an alias. **A model the table does not know prints its token count and no
+dollar figure at all**: a cost derived from another model's rate would look checked and
+would not be. A run that spent nothing — a dry run — prints no clause, since `0 tokens ·
+$0.0000` invites you to check a number that means "we did not ask".
+
+`--format json` is unchanged and stays a bare `LintResult[]`; the numbers live in
+`--format json-with-metadata`, ESLint's own name for `{ results, metadata }`:
+
+```sh
+hugaw --format json-with-metadata | jq .metadata.usage
+```
+```json
+{
+  "model": "jev-1.13.0",
+  "requests": 36,
+  "inputTokens": 52788,
+  "outputTokens": 2523,
+  "estimatedCostUsd": 0.002217096,
+  "rate": { "inputPerMTok": 0.042, "outputPerMTok": 0 }
+}
+```
+
+Both figures are from a real run over `fixtures/`. `requests` is below `candidates` because
+the runner batches every rule firing on one component into a single request, and
+`outputTokens` is counted in the token total but not in the cost, because output is free at
+this rate. Full precision in JSON — the rounding above is a display concern. `estimatedCostUsd` and
+`rate` are omitted entirely for an unpriced model, so nothing sums a zero it mistakes for a
+measurement. Both JSON formats keep stdout pure and put the human stats line on stderr.
+
 ## Config — `hugaw.config.ts`
 
 ```ts

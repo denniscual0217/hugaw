@@ -40,6 +40,16 @@ export interface RunStats {
   requests: number
   inputTokens: number
   outputTokens: number
+  /**
+   * The model the judge reported answering with, or null when nothing was
+   * judged.
+   *
+   * The *resolved* id, not the configured one: `jev-latest` is an alias, and
+   * pricing an alias against whatever it pointed at last is how a cost figure
+   * becomes quietly wrong. Every request in a run goes to one configured
+   * model, so the first id reported is the id for the run.
+   */
+  model: string | null
 }
 
 export interface RunReport {
@@ -83,5 +93,6 @@ export function emptyStats(): RunStats {
     requests: 0,
     inputTokens: 0,
     outputTokens: 0,
+    model: null,
   }
 }

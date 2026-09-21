@@ -2,6 +2,7 @@ import { relative } from "node:path"
 import type { RunStats, Truncation } from "../core/index.js"
 import { countProblems } from "./to-eslint.js"
 import type { Colors, EslintResult } from "./types.js"
+import { usageClause } from "./usage.js"
 
 export interface StylishContext {
   readonly cwd: string
@@ -13,7 +14,10 @@ export interface StylishContext {
 }
 
 function statsLine(stats: RunStats): string {
-  return `${stats.candidates} candidates, ${stats.skippedStatically} skipped statically, ${stats.judged} judged`
+  const line = `${stats.candidates} candidates, ${stats.skippedStatically} skipped statically, ${stats.judged} judged`
+  // Appended, never its own line: what a run cost belongs beside what it did.
+  const usage = usageClause(stats)
+  return usage === null ? line : `${line} · ${usage}`
 }
 
 /**
