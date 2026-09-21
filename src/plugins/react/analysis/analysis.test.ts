@@ -32,6 +32,11 @@ function analyse(body: string, binding = "value"): { refs: Identifier[]; unit: F
   return { refs: referencesWithin(nameNode, unit), unit }
 }
 
+/** The unit a reference belongs to — `classifyUsage` needs it to name returns. */
+function unitFor(refs: Identifier[]): FunctionLike {
+  return unitOf(refs[0]!)!
+}
+
 function escapes(body: string): boolean {
   const { refs, unit } = analyse(body)
   return refs.some((ref) => escapesUnit(ref, unit))
@@ -81,7 +86,7 @@ describe("hook arguments — described always, skipped selectively", () => {
       expect(comparingHookArgumentOf(refs[0]!), hook).toBeNull()
       // ...but the model is still told the value reaches the hook.
       expect(hookArgumentOf(refs[0]!)).toBe(hook)
-      expect(classifyUsage(refs[0]!).description).toContain(`passed to ${hook}(), which`)
+      expect(classifyUsage(refs[0]!, unitFor(refs)).description).toContain(`passed to ${hook}(), which`)
     }
   })
 
@@ -95,7 +100,7 @@ describe("hook arguments — described always, skipped selectively", () => {
   it("keeps useImperativeHandle as comparing: React concats the ref into its deps", () => {
     const { refs } = passedTo("useImperativeHandle")
     expect(comparingHookArgumentOf(refs[0]!)).toBe("useImperativeHandle")
-    expect(classifyUsage(refs[0]!).description).toBe("`value` passed to the hook useImperativeHandle()")
+    expect(classifyUsage(refs[0]!, unitFor(refs)).description).toBe("`value` passed to the hook useImperativeHandle()")
   })
 
   it("asserts React semantics only about React's own exports", () => {
@@ -107,7 +112,7 @@ describe("hook arguments — described always, skipped selectively", () => {
     expect(hookArgumentSemantics(shadowed.refs[0]!)).toBeNull()
     // Unknown => treated as comparing => skipped, the safe direction.
     expect(comparingHookArgumentOf(shadowed.refs[0]!)).toBe("useLocalState")
-    expect(classifyUsage(shadowed.refs[0]!).description).toBe(
+    expect(classifyUsage(shadowed.refs[0]!, unitFor(shadowed.refs)).description).toBe(
       "`value` passed to the hook useLocalState()",
     )
   })
@@ -118,12 +123,12 @@ describe("hook arguments — described always, skipped selectively", () => {
       `${project}function C(){ const value = useMemo(()=>1,[]); const x = Rt.useState(value); return x }`,
     )
     expect(comparingHookArgumentOf(refs[0]!)).toBeNull()
-    expect(classifyUsage(refs[0]!).description).toContain("never compares it across renders")
+    expect(classifyUsage(refs[0]!, unitFor(refs)).description).toContain("never compares it across renders")
   })
 
   it("states the deps-driven semantics for an effect or factory argument", () => {
     const { refs } = passedTo("useEffect")
-    expect(classifyUsage(refs[0]!).description).toBe(
+    expect(classifyUsage(refs[0]!, unitFor(refs)).description).toBe(
       "`value` passed to useEffect(), which compares only its dependency array, not this argument",
     )
   })
@@ -138,6 +143,69 @@ describe("hook arguments — described always, skipped selectively", () => {
     const { refs } = passedTo("React.useState")
     expect(comparingHookArgumentOf(refs[0]!)).toBeNull()
     expect(comparingHookArgumentOf(passedTo("React.useQuery").refs[0]!)).toBe("React.useQuery")
+  })
+})
+
+describe("classifyUsage — the facts that `skip` used to encode", () => {
+  // With `skip` deleted, these descriptions are the only thing carrying each
+  // fact to the model. A wrong one is worse than a missing one.
+  const describeFirst = (body: string) => {
+    const { refs, unit } = analyse(body)
+    return classifyUsage(refs[0]!, unit).description
+  }
+
+  it("names a React.memo child and says why it matters", () => {
+    expect(
+      describeFirst(
+        'import { memo } from "react"\n' +
+          "const Child = memo(function Child({ data }) { return <i>{data}</i> })\n" +
+          "function C({ n }){ const value = useMemo(()=>({n}),[n]); return <Child data={value} /> }",
+      ),
+    ).toBe(
+      "`value` passed as the `data` prop to <Child>, which is wrapped in React.memo and compares its props by reference",
+    )
+  })
+
+  it("names a context provider and its reach", () => {
+    expect(
+      describeFirst(
+        'import { createContext } from "react"\n' +
+          "const Ctx = createContext(null)\n" +
+          "function C({ n }){ const value = useMemo(()=>({n}),[n]); return <Ctx.Provider value={value}>x</Ctx.Provider> }",
+      ),
+    ).toBe(
+      "`value` passed as the `value` prop of <Ctx.Provider>, so every consumer of that context receives it",
+    )
+  })
+
+  it("says a custom hook hands the value to callers it cannot see", () => {
+    expect(
+      describeFirst("function useThing({ n }){ const value = useMemo(()=>({n}),[n]); return value }"),
+    ).toBe(
+      "`value` returned directly from the custom hook `useThing`, so callers outside this file receive it",
+    )
+  })
+
+  it("says so when the hook returns it wrapped in an object", () => {
+    expect(
+      describeFirst("function useThing({ n }){ const value = useMemo(()=>({n}),[n]); return { value } }"),
+    ).toContain("returned inside the object it returns from the custom hook `useThing`")
+  })
+
+  it("names the member a value is written into", () => {
+    expect(
+      describeFirst(
+        "function C({ n }){ const ref = { current: null }; const value = useMemo(()=>({n}),[n]); ref.current = value; return null }",
+      ),
+    ).toBe("`value` assigned to `ref.current`, a member that outlives this render")
+  })
+
+  it("describes a value captured by an inline callback", () => {
+    expect(
+      describeFirst(
+        "function C({ n }){ const value = useMemo(()=>({n}),[n]); useThing(() => value); return null }",
+      ),
+    ).toBe("`value` returned from an inline callback passed to `useThing()`")
   })
 })
 
@@ -263,19 +331,19 @@ describe("dependencyCoverage — does the memo skip work on real renders?", () =
 describe("classifyUsage — truthiness guards read as consumers", () => {
   it("describes a `&&` guard without marking it unclassifiable", () => {
     const { refs } = analyse("function C(){ const value = useMemo(()=>1,[]); return value && <em/> }")
-    const usage = classifyUsage(refs[0]!)
+    const usage = classifyUsage(refs[0]!, unitFor(refs))
     expect(usage.resolved).toBe(true)
     expect(usage.description).toBe("`value` tested for truthiness in a `&&` expression")
   })
 
   it("describes an `if` condition", () => {
     const { refs } = analyse("function C(){ const value = useMemo(()=>1,[]); if (value) { go() } return null }")
-    expect(classifyUsage(refs[0]!).description).toBe("`value` tested for truthiness in an `if`")
+    expect(classifyUsage(refs[0]!, unitFor(refs)).description).toBe("`value` tested for truthiness in an `if`")
   })
 
   it("describes a hook argument even where we do not skip", () => {
     const { refs } = analyse("function C(){ const value = useMemo(()=>1,[]); const [s] = useState(value); return s }")
-    const usage = classifyUsage(refs[0]!)
+    const usage = classifyUsage(refs[0]!, unitFor(refs))
     expect(usage.kind).toBe("hook-argument")
     // The React semantics are a static fact; stating them stops the model
     // reading "reaches a hook" as "identity matters".

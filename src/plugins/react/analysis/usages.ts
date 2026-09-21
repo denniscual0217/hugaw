@@ -1,9 +1,19 @@
 import { Node, SyntaxKind } from "ts-morph"
 import type { Identifier } from "ts-morph"
+import type { FunctionLike } from "../../../adapters/typescript/types.js"
+import { unitName } from "../../../adapters/typescript/units.js"
 import { accessChainRoot } from "./access.js"
+import { contextValueTagOf } from "./context.js"
+import { escapeOf } from "./escapes.js"
 import { dependencyArrayHookOf, hookArgumentOf, hookArgumentSemantics } from "./hooks.js"
+import { isMemoComponentTag } from "./memo-components.js"
 
 const LOGICAL_OPERATORS = new Set(["&&", "||", "??"])
+
+/** The community convention that marks a function as a hook. */
+function isHookName(name: string): boolean {
+  return /^use[A-Z]/.test(name)
+}
 
 export type UsageKind =
   | "jsx-child"
@@ -61,7 +71,7 @@ function jsxTagOf(node: Node): string {
  * property read second, and describing it the other way round hides the one
  * fact that decides the verdict.
  */
-export function classifyUsage(identifier: Identifier): Usage {
+export function classifyUsage(identifier: Identifier, unit: FunctionLike): Usage {
   const line = identifier.getStartLineNumber()
   const root = accessChainRoot(identifier)
   const readAs = `\`${root.getText()}\``
@@ -101,10 +111,35 @@ export function classifyUsage(identifier: Identifier): Usage {
   if (Node.isJsxExpression(parent)) {
     const grandparent = parent.getParent()
     if (grandparent && Node.isJsxAttribute(grandparent)) {
-      return usage(
-        "jsx-prop",
-        `${readAs} passed as prop \`${grandparent.getNameNode().getText()}\` to <${jsxTagOf(grandparent)}>`,
+      const prop = grandparent.getNameNode().getText()
+      const tag = jsxTagOf(grandparent)
+
+      // A context value reaches every consumer of that context, anywhere.
+      const contextTag = contextValueTagOf(grandparent)
+      if (contextTag !== null) {
+        return usage(
+          "jsx-prop",
+          `${readAs} passed as the \`value\` prop of <${contextTag}>, so every consumer of that context receives it`,
+        )
+      }
+
+      // A React.memo child compares its props by reference — the single most
+      // important fact the identity question can be given.
+      const element = grandparent.getFirstAncestor(
+        (n) => Node.isJsxOpeningElement(n) || Node.isJsxSelfClosingElement(n),
       )
+      if (
+        element &&
+        (Node.isJsxOpeningElement(element) || Node.isJsxSelfClosingElement(element)) &&
+        isMemoComponentTag(element.getTagNameNode())
+      ) {
+        return usage(
+          "jsx-prop",
+          `${readAs} passed as the \`${prop}\` prop to <${tag}>, which is wrapped in React.memo and compares its props by reference`,
+        )
+      }
+
+      return usage("jsx-prop", `${readAs} passed as prop \`${prop}\` to <${tag}>`)
     }
     return usage("jsx-child", `${readAs} rendered as a child of <${jsxTagOf(parent)}>`)
   }
@@ -113,12 +148,26 @@ export function classifyUsage(identifier: Identifier): Usage {
     return usage("call-argument", `${readAs} passed to \`${parent.getExpression().getText()}()\``)
   }
 
-  if (Node.isReturnStatement(parent)) return usage("returned", `${readAs} returned from the enclosing function`)
-
-  if (Node.isBinaryExpression(parent) && parent.getOperatorToken().getText() === "=") {
-    if (parent.getRight() === root) {
-      return usage("assigned", `${readAs} assigned to \`${parent.getLeft().getText()}\``)
+  // Returned or written outward — the value outlives this render, and the
+  // consumers are in files we cannot see.
+  const escape = escapeOf(identifier, unit)
+  if (escape !== null) {
+    if (escape.kind === "returned") {
+      const owner = unitName(unit)
+      const via = escape.wrapped ? "inside the object it returns" : "directly"
+      return usage(
+        "returned",
+        isHookName(owner)
+          ? `${readAs} returned ${via} from the custom hook \`${owner}\`, so callers outside this file receive it`
+          : `${readAs} returned ${via} from \`${owner}\`, so its callers receive it`,
+      )
     }
+    return usage(
+      "assigned",
+      escape.intoMember
+        ? `${readAs} assigned to \`${escape.target}\`, a member that outlives this render`
+        : `${readAs} assigned to \`${escape.target}\`, declared outside this function`,
+    )
   }
 
   // Truthiness tests consume the value without caring about its identity —
@@ -139,6 +188,15 @@ export function classifyUsage(identifier: Identifier): Usage {
     if (LOGICAL_OPERATORS.has(operator) && parent.getLeft() === root) {
       return usage("other", `${readAs} tested for truthiness in a \`${operator}\` expression`)
     }
+  }
+
+  // Captured by an inline callback — common around hooks, and "used as
+  // ArrowFunction" told the model nothing.
+  if (Node.isArrowFunction(parent) && parent.getBody() === root) {
+    const call = parent.getParent()
+    const owner =
+      call && Node.isCallExpression(call) ? ` passed to \`${call.getExpression().getText()}()\`` : ""
+    return usage("other", `${readAs} returned from an inline callback${owner}`)
   }
 
   // A plain field read that reaches no position we recognise.

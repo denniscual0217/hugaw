@@ -78,6 +78,22 @@ const WARN_CASES: readonly WarnCase[] = [
     contains: ["`values` is only read at line 5"],
   },
   {
+    // Moved from should-skip/ when `skip` was deleted. A memoised template
+    // literal has no reference identity to protect, so returning it from a
+    // hook is not a reason to stay quiet — measured live at identity 0.14.
+    file: "should-warn/returned-from-hook.tsx",
+    line: 4,
+    column: 17,
+    contains: ["`label` is only read at line 5"],
+  },
+  {
+    // Same, returned through a conditional. Measured live at identity 0.33.
+    file: "should-warn/conditional-return-hook.tsx",
+    line: 4,
+    column: 17,
+    contains: ["`label` is only read at line 5"],
+  },
+  {
     file: "should-warn/spread-usage.tsx",
     line: 4,
     column: 17,
@@ -180,80 +196,17 @@ describe("react/pointless-usememo — should-warn", () => {
   })
 })
 
-interface SkipCase {
-  readonly file: string
-  readonly reason: string
-}
-
-const SKIP_CASES: readonly SkipCase[] = [
-  {
-    file: "should-skip/memo-child-prop.tsx",
-    reason: "passed as prop to React.memo component <Child>",
-  },
-  {
-    file: "should-skip/memo-child-cross-file.tsx",
-    reason: "passed as prop to React.memo component <MemoChild>",
-  },
-  { file: "should-skip/dep-array.tsx", reason: "listed in dependency array of useEffect" },
-  {
-    // Defect #1: the field of a memoized object inherits its identity, so
-    // `[data.items]` is every bit as dependency-sensitive as `[data]`.
-    file: "should-skip/member-access-dep-array.tsx",
-    reason: "listed in dependency array of useEffect",
-  },
-  { file: "should-skip/hook-argument.tsx", reason: "passed as an argument to hook useQuery" },
-  {
-    // A local `useState` is not React's: we must not assert React semantics
-    // about it, so it counts as an unknown hook and skips.
-    file: "should-skip/shadowed-hook.tsx",
-    reason: "passed as an argument to hook useState",
-  },
-  {
-    file: "should-skip/custom-hook-dep-array.tsx",
-    reason: "listed in dependency array of useDebounced",
-  },
-  {
-    file: "should-skip/context-provider-value.tsx",
-    reason: "used as context value on <ThemeContext.Provider>",
-  },
-  {
-    file: "should-skip/context-react19-value.tsx",
-    reason: "used as context value on <LocaleContext>",
-  },
-  {
-    file: "should-skip/returned-from-hook.tsx",
-    reason: "memoized value escapes the component (returned or assigned outward)",
-  },
-  {
-    // A hook whose contract is returning the value, via a conditional.
-    file: "should-skip/conditional-return-hook.tsx",
-    reason: "memoized value escapes the component (returned or assigned outward)",
-  },
-]
-
-describe("react/pointless-usememo — should-skip (zero API calls)", () => {
-  it.each(SKIP_CASES)("$file is dropped statically", async (testCase) => {
+describe("react/pointless-usememo — select still gates what is a candidate", () => {
+  it("not-a-candidate/not-react-usememo.tsx never becomes a candidate", async () => {
     const { judge, calls } = createMockJudge(CHEAP)
-    const report = await runFixture(testCase.file, { judge })
+    const report = await runFixture("not-a-candidate/not-react-usememo.tsx", { judge })
 
-    // The cost model: a skipped candidate must never reach the judge.
-    expect(calls.length).toBe(0)
-    expect(report.stats.judged).toBe(0)
-    expect(report.stats.requests).toBe(0)
-    expect(report.findings).toEqual([])
-    expect(report.errors).toEqual([])
-    expect(report.stats.candidates).toBe(1)
-    expect(report.stats.skippedStatically).toBe(1)
-    expect(report.skipped.map((s) => s.reason)).toEqual([testCase.reason])
-  })
-
-  it("should-skip/not-react-usememo.tsx never becomes a candidate", async () => {
-    const { judge, calls } = createMockJudge(CHEAP)
-    const report = await runFixture("should-skip/not-react-usememo.tsx", { judge })
-
+    // The one remaining zero-request assertion. `skip` is gone by design, but
+    // `select` still decides what a candidate *is*: a `useMemo` that is not
+    // React's own is not this rule's business and costs nothing.
     expect(report.stats.candidates).toBe(0)
-    expect(report.stats.skippedStatically).toBe(0)
     expect(calls.length).toBe(0)
+    expect(report.stats.requests).toBe(0)
     expect(report.findings).toEqual([])
     expect(report.errors).toEqual([])
   })
@@ -264,7 +217,23 @@ interface SilentCase {
   readonly script: MockScript
 }
 
+/** Identity high enough to suppress; each value is what the live model returned. */
+const identity = (noul: number): MockScript => () => ({ cost: 0.05, identity_matters: noul })
+
 const SILENT_CASES: readonly SilentCase[] = [
+  // Every one of these was a `skip` reason until the rule stopped
+  // pre-judging. They now reach the model and are suppressed by
+  // `identity_matters`, with the live figure recorded beside each.
+  { file: "should-pass/memo-child-prop.tsx", script: identity(0.97) },
+  { file: "should-pass/memo-child-cross-file.tsx", script: identity(0.97) },
+  { file: "should-pass/dep-array.tsx", script: identity(0.93) },
+  { file: "should-pass/custom-hook-dep-array.tsx", script: identity(0.92) },
+  { file: "should-pass/member-access-dep-array.tsx", script: identity(0.88) },
+  { file: "should-pass/context-provider-value.tsx", script: identity(0.85) },
+  { file: "should-pass/context-react19-value.tsx", script: identity(0.84) },
+  { file: "should-pass/hook-argument.tsx", script: identity(0.85) },
+  { file: "should-pass/shadowed-hook.tsx", script: identity(0.45) },
+  { file: "should-pass/assigned-to-ref.tsx", script: identity(0.95) },
   {
     // Live: score 1.30, mass 0.63, mode 2 — suppressed on mass.
     file: "should-pass/prop-callee.tsx",

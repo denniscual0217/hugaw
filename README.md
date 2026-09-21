@@ -168,35 +168,32 @@ MVP placeholders behind real interfaces.
 ## The one MVP rule — `react/pointless-usememo`
 
 `select` finds every `useMemo` imported from React (named, namespace or default import,
-resolved syntactically so no `@types/react` is required).
+resolved syntactically so no `@types/react` is required). That is the *only* static gate:
+deciding what counts as a candidate, not whether a candidate is fine.
 
-`skip` then drops — for free, with **zero** API calls — every candidate that is provably
-justified:
+**This rule has no `skip`.** It used to: five static "this one is provably legitimate"
+checks, for a memoized child's prop, a dependency array, a context value, a comparing hook
+argument, and a value escaping the component. They were deleted, because encoding
+"definitely fine" in static rules is exactly the failure hugaw exists to avoid — and they
+were twice wrong in practice, once bypassed by a member-access chain and once silencing a
+memoised string returned from a custom hook, where identity cannot matter at all.
 
-| reason | why it is legitimate |
+Every fact those checks encoded is now a *description* in `value_usages`, and the model
+decides:
+
+| the old skip | what the model is told instead |
 | --- | --- |
-| `result is not bound to a simple identifier` | nothing to trace |
-| `memoized value escapes the component (returned or assigned outward)` | a custom hook's contract |
-| `passed as prop to React.memo component <X>` | identity is the whole point |
-| `listed in dependency array of <hook>` | identity drives the effect |
-| `used as context value on <Tag>` | identity drives every consumer |
-| `passed as an argument to hook <hook>` | the hook may compare its input across renders |
+| memo-child prop | `` `style` passed as the `style` prop to <Row>, which is wrapped in React.memo and compares its props by reference `` |
+| dependency array | `` `value` listed in the dependency array of useEffect() `` |
+| context value | `` `cfg` passed as the `value` prop of <ThemeContext.Provider>, so every consumer of that context receives it `` |
+| escapes the unit | `` `label` returned directly from the custom hook `useLabel`, so callers outside this file receive it `` |
+| | `` `value` assigned to `ref.current`, a member that outlives this render `` |
+| comparing hook argument | `` `key` passed to the hook useQuery() `` |
 
-Every positional check runs against the whole **access chain**, not the bare identifier:
-`useEffect(…, [data.items])` skips just as `[data]` does, because the field of a memoized
-object is fresh on every render once the memo is gone.
-
-The hook-argument skip is the one that needs care in both directions. React's own
-`useState`, `useRef` and `useReducer` read their argument once on mount, and the deps-driven
-hooks compare only their dependency array — a memo in those positions is pointless, so they
-are *excluded* from the skip and the slice states that semantics outright rather than
-letting the model infer it from a name. Everything else skips, including hooks we cannot
-resolve. Every one of those judgements is gated on the callee actually resolving to React's
-export: a local `function useState` shares the name and none of the behaviour, so it is
-treated as an unknown hook and skipped.
-
-Most legitimate `useMemo` dies here. Every check added to `skip` is a false positive that can
-never happen.
+Accuracy matters more than prose here: every one of these is resolved through the same
+predicates that used to feed the skips — `isReactApi`, `isMemoComponentTag`,
+`contextValueTagOf` — and where a fact cannot be resolved the usage is marked unresolved
+rather than guessed at.
 
 What survives is judged on two questions over four context slices
 (`component_source`, `memo_call`, `value_usages`, `callee_sources`), and reported only when
@@ -269,8 +266,10 @@ pnpm test:live     # HUGAW_LIVE=1, one opt-in call against the real API
 Fixtures live in three buckets that encode the cost model:
 
 - `should-warn/` — reaches the model and reports
-- `should-skip/` — dropped by `skip` before any request; the tests assert the judge was
-  **never invoked**. This is the free bucket.
+- `should-skip/` — *(removed for `pointless-usememo`, which has no `skip`)* dropped before
+  any request. A rule that keeps a `skip` still uses it.
+- `not-a-candidate/` — `select` never yields a candidate, so nothing is requested. This is
+  what is left of the free bucket.
 - `should-pass/` — reaches the model and *passes* the gates in `decide`, so nothing is
   reported. It was checked and cleared; that is the difference from `should-skip`, which was
   never checked at all.
@@ -278,7 +277,8 @@ Fixtures live in three buckets that encode the cost model:
 ## Adding fixtures for a new rule
 
 Fixtures live under `fixtures/<rule name>/`, in the same three buckets — `should-warn`,
-`should-skip`, `should-pass`. `_`-prefixed files are support files for the fixture
+`should-skip` (only where the rule has a `skip`), `should-pass`, and `not-a-candidate` for
+cases `select` rejects. `_`-prefixed files are support files for the fixture
 beside them and stay in that bucket, because the fixture imports them by relative path.
 
 Keep the set small and deliberate:

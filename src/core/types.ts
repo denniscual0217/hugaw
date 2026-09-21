@@ -149,8 +149,16 @@ export interface Rule<
   /** Slice names this rule needs in the request state. */
   readonly context: readonly string[]
   select(file: T["file"], ctx: RuleContext<T>): Iterable<Selection<T, D>>
-  /** A reason string drops the candidate: never judged, never reported. */
-  skip(candidate: Candidate<T, D>, ctx: RuleContext<T>): string | null
+  /**
+   * Optional static escape hatch: a reason string drops the candidate, which
+   * is then never judged and never reported.
+   *
+   * Omit it unless a candidate can be ruled out on syntax *alone*. A rule that
+   * encodes "this one is definitely fine" recreates the static-analysis
+   * failure hugaw exists to avoid — if the answer needs judgement, let the
+   * model judge it and put the reasoning in a slice instead.
+   */
+  skip?(candidate: Candidate<T, D>, ctx: RuleContext<T>): string | null
   ask(input: AskInput<T, D>): Q
   decide(answers: Answers<Q>, input: DecideInput<T, D>): Verdict<F> | null
 }

@@ -3,12 +3,6 @@ import type { CallExpression, Identifier } from "ts-morph"
 import { defineRule, noul, score } from "../../../core/index.js"
 import type { Candidate, JsonValue, Selection, Slices } from "../../../core/index.js"
 import type { FunctionLike, TsTypes } from "../../../adapters/typescript/index.js"
-import { referencesWithin } from "../../../adapters/typescript/index.js"
-import { accessChainRoot } from "../analysis/access.js"
-import { contextValueTagOf, enclosingValueAttribute } from "../analysis/context.js"
-import { escapesUnit } from "../analysis/escapes.js"
-import { comparingHookArgumentOf, dependencyArrayHookOf } from "../analysis/hooks.js"
-import { isMemoComponentTag } from "../analysis/memo-components.js"
 import { isReactApi } from "../analysis/react-imports.js"
 import { dependencyCoverage as coverageOf } from "../analysis/render-triggers.js"
 import type { MemoData } from "./memo-data.js"
@@ -108,12 +102,22 @@ const questions = {
     "One pass (map, filter, find, reduce, Set/Map build) over a collection whose size is not bounded here, such as a prop or state array that could hold thousands of entries",
     "More than one pass, or a sort, groupBy or nested iteration, over a collection whose size is not bounded here; or heavy parsing, regex over large text, or recursive tree building",
   ]),
+  /**
+   * With `skip` gone this question is load-bearing for every identity case the
+   * rule used to decide statically, so its criteria enumerate them — including
+   * the two that leave the file (a custom hook's return value, a write into a
+   * ref or cache), which the old text did not mention because a skip caught
+   * them first. The primitive clause is the other half of the same lesson:
+   * `"Hi bob" === "Hi bob"` regardless of memoisation, so no consumer at any
+   * distance can depend on a memoised string for identity.
+   */
   identity_matters: noul(
     "Does any consumer in `value_usages` depend on this value keeping the same reference across renders?",
     {
-      true: "It reaches a memoized component, a hook dependency array, a context value, or a reference comparison",
+      true:
+        "Some consumer compares it by reference or keeps it beyond this render: a React.memo component, a hook dependency array, a context value, an explicit reference comparison, a ref or cache it is assigned to, or a custom hook returning it to callers this file cannot see",
       false:
-        "Every consumer only reads the value during render; a fresh reference each render is harmless",
+        "Every consumer only reads the value during this render — rendering it, reading a field, passing it to a plain function — so a fresh reference each render is harmless. A string, number or boolean has no reference identity at all, so this is always the case for a primitive",
     },
   ),
 }
@@ -266,44 +270,6 @@ export const pointlessUseMemo = defineRule<TsTypes, MemoData, MemoQuestions, Mem
     return selections
   },
 
-  /**
-   * Static escape hatches, zero cost. Every check added here is a false
-   * positive that can never happen (SPEC §3) — this is the function that
-   * decides whether the tool is trusted.
-   */
-  skip(candidate) {
-    const { binding } = candidate.data
-    if (!binding) return "result is not bound to a simple identifier"
-
-    const unit = candidate.unit as FunctionLike
-    const references = referencesWithin(binding, unit)
-
-    for (const reference of references) {
-      if (escapesUnit(reference, unit)) {
-        return "memoized value escapes the component (returned or assigned outward)"
-      }
-    }
-    for (const reference of references) {
-      const tag = memoComponentPropTagOf(reference)
-      if (tag !== null) return `passed as prop to React.memo component <${tag}>`
-    }
-    for (const reference of references) {
-      const hook = dependencyArrayHookOf(reference)
-      if (hook !== null) return `listed in dependency array of ${hook}`
-    }
-    for (const reference of references) {
-      const attribute = enclosingValueAttribute(reference)
-      if (!attribute) continue
-      const tag = contextValueTagOf(attribute)
-      if (tag !== null) return `used as context value on <${tag}>`
-    }
-    for (const reference of references) {
-      const hook = comparingHookArgumentOf(reference)
-      if (hook !== null) return `passed as an argument to hook ${hook}`
-    }
-    return null
-  },
-
   ask() {
     return questions
   },
@@ -367,23 +333,6 @@ function bindingOf(call: CallExpression): Identifier | null {
   if (parent.getInitializer() !== call) return null
   const nameNode = parent.getNameNode()
   return Node.isIdentifier(nameNode) ? nameNode : null
-}
-
-function memoComponentPropTagOf(reference: Identifier): string | null {
-  // Through a member-access chain too: `<Memo item={data.item} />` hands the
-  // memoized object's field straight into a reference comparison.
-  const expression = accessChainRoot(reference).getParent()
-  if (!expression || !Node.isJsxExpression(expression)) return null
-  const attribute = expression.getParent()
-  if (!attribute || !Node.isJsxAttribute(attribute)) return null
-  const element = attribute.getFirstAncestor(
-    (n) => Node.isJsxOpeningElement(n) || Node.isJsxSelfClosingElement(n),
-  )
-  if (!element || (!Node.isJsxOpeningElement(element) && !Node.isJsxSelfClosingElement(element))) {
-    return null
-  }
-  const tagName = element.getTagNameNode()
-  return isMemoComponentTag(tagName) ? tagName.getText() : null
 }
 
 export default pointlessUseMemo

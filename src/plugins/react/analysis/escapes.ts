@@ -59,36 +59,68 @@ function carriesOutward(parent: Node, current: Node): boolean {
  * followed, so such a hook is judged rather than skipped. Tracking assignment
  * graphs is out of MVP scope; the model still sees the `returned` usage.
  */
-export function escapesUnit(reference: Identifier, unit: FunctionLike): boolean {
+export type Escape =
+  /** Handed back to whoever called this function. */
+  | { readonly kind: "returned"; readonly wrapped: boolean }
+  /** Written into something that outlives this render. */
+  | { readonly kind: "assigned"; readonly target: string; readonly intoMember: boolean }
+
+/**
+ * How the memoized value leaves the unit, or null if it does not.
+ *
+ * Reported rather than acted on: the rule no longer pre-judges these, so the
+ * *reason* has to reach the model as a description instead of being silently
+ * converted into a skip.
+ *
+ * Crucially this does not fire for `return <div>{value}</div>`: JSX
+ * expressions are consumers, not exits.
+ *
+ * Known limitation: an alias hop (`const out = value; return out`) is not
+ * followed. The model still sees the `returned` usage on the alias.
+ */
+export function escapeOf(reference: Identifier, unit: FunctionLike): Escape | null {
   // A field of the memo carries the memo's identity with it.
   let current: Node = accessChainRoot(reference)
   let parent = current.getParent()
+  let wrapped = false
 
   while (parent && carriesOutward(parent, current)) {
+    // `return { label }` hands the memo out inside a fresh object.
+    if (Node.isObjectLiteralExpression(parent) || Node.isArrayLiteralExpression(parent)) {
+      wrapped = true
+    }
     current = parent
     parent = current.getParent()
   }
-  if (!parent) return false
+  if (!parent) return null
 
   if (Node.isReturnStatement(parent) && parent.getExpression() === current) {
-    return unitOf(parent) === unit
+    return unitOf(parent) === unit ? { kind: "returned", wrapped } : null
   }
 
   // Arrow shorthand body: `() => value`.
   if (Node.isArrowFunction(parent) && parent.getBody() === current) {
-    return parent === unit
+    return parent === unit ? { kind: "returned", wrapped } : null
   }
 
   if (Node.isBinaryExpression(parent) && parent.getOperatorToken().getText() === "=") {
-    if (parent.getRight() !== current) return false
+    if (parent.getRight() !== current) return null
     const target = parent.getLeft()
     // Writing into another object's field — `ref.current`, a cache, a mutable
     // record — outlives this render whether or not that object is local.
-    if (Node.isPropertyAccessExpression(target) || Node.isElementAccessExpression(target)) return true
+    if (Node.isPropertyAccessExpression(target) || Node.isElementAccessExpression(target)) {
+      return { kind: "assigned", target: target.getText(), intoMember: true }
+    }
     return assignsToOuterBinding(target, unit)
+      ? { kind: "assigned", target: target.getText(), intoMember: false }
+      : null
   }
 
-  return false
+  return null
+}
+
+export function escapesUnit(reference: Identifier, unit: FunctionLike): boolean {
+  return escapeOf(reference, unit) !== null
 }
 
 /** `outerVar = value`, where `outerVar` is declared outside this unit. */

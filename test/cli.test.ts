@@ -29,7 +29,7 @@ async function ensureFreshBuild(): Promise<void> {
 /** The CSI prefix every ANSI colour sequence starts with. */
 const ANSI_CSI = `${String.fromCharCode(27)}[`
 
-/** These fixtures are all statically skipped, so the key is never used. */
+/** These fixtures produce no candidate, so the key is never used. */
 const NO_NETWORK = { TYPESAFE_API_KEY: "unused-by-these-cases" }
 
 interface Result {
@@ -90,20 +90,20 @@ describe("hugaw CLI (built)", () => {
     expect(payload.stats.judged).toBe(0)
   })
 
-  it("a statically skipped file makes no request at all", async () => {
-    const { code, stdout } = await hugaw(["fixtures/pointless-usememo/should-skip/dep-array.tsx", "--dry-run"], {
-      TYPESAFE_API_KEY: "",
-    })
+  it("a file with no candidate makes no request at all", async () => {
+    // `skip` is gone by design; `select` is what still costs nothing.
+    const { code, stdout } = await hugaw(
+      ["fixtures/pointless-usememo/not-a-candidate/not-react-usememo.tsx", "--dry-run"],
+      { TYPESAFE_API_KEY: "" },
+    )
     expect(code).toBe(0)
     const payload = JSON.parse(stdout) as {
       requests: unknown[]
-      skipped: { reason: string }[]
-      stats: { judged: number; skippedStatically: number }
+      stats: { candidates: number; judged: number }
     }
     expect(payload.requests).toEqual([])
+    expect(payload.stats.candidates).toBe(0)
     expect(payload.stats.judged).toBe(0)
-    expect(payload.stats.skippedStatically).toBe(1)
-    expect(payload.skipped[0]?.reason).toBe("listed in dependency array of useEffect")
   })
 
   it("exits 2 with a clear message when the API key is missing", async () => {
@@ -127,7 +127,7 @@ describe("hugaw CLI (built)", () => {
 
   it("exits 2 for a formatter that is not installed", async () => {
     const { code, stderr } = await hugaw([
-      "fixtures/pointless-usememo/should-skip/dep-array.tsx",
+      "fixtures/pointless-usememo/not-a-candidate/not-react-usememo.tsx",
       "--format",
       "definitely-not-installed",
     ], NO_NETWORK)
@@ -137,18 +137,21 @@ describe("hugaw CLI (built)", () => {
 
   it("prints pure JSON on stdout with stats on stderr", async () => {
     const { code, stdout, stderr } = await hugaw([
-      "fixtures/pointless-usememo/should-skip/dep-array.tsx",
+      "fixtures/pointless-usememo/not-a-candidate/not-react-usememo.tsx",
       "--format",
       "json",
     ], NO_NETWORK)
     expect(code).toBe(0)
     expect(JSON.parse(stdout)).toEqual([])
-    expect(stderr).toContain("1 candidates, 1 skipped statically, 0 judged")
+    expect(stderr).toContain("0 candidates, 0 skipped statically, 0 judged")
   })
 
   it("writes no ANSI escapes when stdout is not a TTY", async () => {
-    const { stdout } = await hugaw(["fixtures/pointless-usememo/should-skip/dep-array.tsx"], NO_NETWORK)
+    const { stdout } = await hugaw(
+      ["fixtures/pointless-usememo/not-a-candidate/not-react-usememo.tsx"],
+      NO_NETWORK,
+    )
     expect(stdout.includes(ANSI_CSI)).toBe(false)
-    expect(stdout).toContain("✓ no findings · 1 candidates, 1 skipped statically, 0 judged")
+    expect(stdout).toContain("✓ no findings · 0 candidates, 0 skipped statically, 0 judged")
   })
 })

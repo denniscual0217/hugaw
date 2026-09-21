@@ -11,7 +11,7 @@ export const valueUsages: SliceExtractor<TsTypes> = {
     const data = candidate.data as MemoData
     if (!data.binding) return []
     return referencesWithin(data.binding, unit as FunctionLike).map((reference) => {
-      const usage = classifyUsage(reference)
+      const usage = classifyUsage(reference, unit as FunctionLike)
       return {
         line: usage.line,
         kind: usage.kind,

@@ -259,7 +259,7 @@ export async function runLint(input: RunInput): Promise<RunReport> {
 
             let reason: string | null
             try {
-              reason = enabled.rule.skip(candidate, ctx)
+              reason = enabled.rule.skip?.(candidate, ctx) ?? null
             } catch (error) {
               errors.push({
                 message: `skip() threw: ${errorMessage(error)}`,
