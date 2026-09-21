@@ -7,9 +7,18 @@ import { runLint } from "../../src/core/runner.js"
 import { react } from "../../src/plugins/react/index.js"
 
 export const REPO_ROOT = resolve(import.meta.dirname, "../..")
+export const FIXTURES_ROOT = resolve(REPO_ROOT, "fixtures")
 
-export function fixturePath(relative: string): string {
-  return resolve(REPO_ROOT, "fixtures", relative)
+/**
+ * Fixtures are grouped per rule, then per bucket:
+ * `fixtures/<rule name>/should-warn/…`. This helper is scoped to one rule so
+ * its callers pass bucket-relative paths; rule #2 passes its own `rule`
+ * rather than repeating the path munging.
+ */
+export const DEFAULT_RULE = "pointless-usememo"
+
+export function fixturePath(relative: string, rule: string = DEFAULT_RULE): string {
+  return resolve(FIXTURES_ROOT, rule, relative)
 }
 
 export interface RunFixtureOptions {

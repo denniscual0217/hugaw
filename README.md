@@ -272,6 +272,31 @@ Fixtures live in three buckets that encode the cost model:
 - `fixtures/should-skip/` — dropped by `skip`; the tests assert the judge was **never invoked**
 - `fixtures/should-stay-silent/` — reaches the model, `decide` returns null
 
+## Adding fixtures for a new rule
+
+Fixtures live under `fixtures/<rule name>/`, in the same three buckets — `should-warn`,
+`should-skip`, `should-stay-silent`. `_`-prefixed files are support files for the fixture
+beside them and stay in that bucket, because the fixture imports them by relative path.
+
+Keep the set small and deliberate:
+
+- **One canonical fixture per bucket.** These back the CLI and end-to-end tests, which need
+  real files on disk.
+- **A real fixture for every case where cross-file resolution is the thing under test** —
+  a memoized component behind a default export, a callee in another module. Nothing else
+  reproduces it; an in-memory source has no module graph.
+- **Everything else in memory**, via `project.createSourceFile()` in `analysis.test.ts` or in
+  the rule's own test. Single-function behaviour, threshold tables and message construction
+  need no file on disk, and a test that builds its own source reads better than one that
+  sends you to another directory to find out what it is asserting.
+
+Rough budget: about three fixtures, plus one per cross-file case.
+
+`pointless-usememo` predates this convention and carries ~35. They are kept because each one
+encodes a real regression — several were added in response to a false positive on production
+code — but applying the convention retroactively would land somewhere around 12. Do not treat
+its fixture count as the standard to match.
+
 ## Out of MVP scope
 
 `--fix`, the cross-file digest pass, real caching, `limits.maxRequests`,

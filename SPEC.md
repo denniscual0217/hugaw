@@ -216,6 +216,11 @@ product and the bottleneck is the network, not the parser) · `@typesafe-ai/sdk`
 Gates: `pnpm typecheck` and `pnpm test` must be green. No ESLint config for MVP.
 
 ## 9. Fixtures — `fixtures/`, three buckets
+
+> **Historical paths.** Fixtures were regrouped per rule on 2026-09-21; the three buckets
+> now live under `fixtures/<rule name>/`. The bucket names and their meanings below are
+> unchanged.
+
 ~15 small `.tsx` files, each a table-driven vitest case:
 - `should-warn/` — constant work, no identity consumer (the Price example)
 - `should-skip/` — must be dropped by `skip` with **zero** API calls (memo child, dep array, context value)

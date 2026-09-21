@@ -66,7 +66,7 @@ describe("hugaw CLI (built)", () => {
 
   it("--dry-run prints the payload, calls nothing and needs no API key", async () => {
     const { code, stdout } = await hugaw(
-      ["fixtures/should-warn/constant-object.tsx", "--dry-run"],
+      ["fixtures/pointless-usememo/should-warn/constant-object.tsx", "--dry-run"],
       { TYPESAFE_API_KEY: "" },
     )
     expect(code).toBe(0)
@@ -91,7 +91,7 @@ describe("hugaw CLI (built)", () => {
   })
 
   it("a statically skipped file makes no request at all", async () => {
-    const { code, stdout } = await hugaw(["fixtures/should-skip/dep-array.tsx", "--dry-run"], {
+    const { code, stdout } = await hugaw(["fixtures/pointless-usememo/should-skip/dep-array.tsx", "--dry-run"], {
       TYPESAFE_API_KEY: "",
     })
     expect(code).toBe(0)
@@ -107,7 +107,7 @@ describe("hugaw CLI (built)", () => {
   })
 
   it("exits 2 with a clear message when the API key is missing", async () => {
-    const { code, stderr } = await hugaw(["fixtures/should-warn/arithmetic.tsx"], {
+    const { code, stderr } = await hugaw(["fixtures/pointless-usememo/should-warn/arithmetic.tsx"], {
       TYPESAFE_API_KEY: "",
     })
     expect(code).toBe(2)
@@ -116,7 +116,7 @@ describe("hugaw CLI (built)", () => {
 
   it("exits 2 for an unknown rule", async () => {
     const { code, stderr } = await hugaw([
-      "fixtures/should-warn/arithmetic.tsx",
+      "fixtures/pointless-usememo/should-warn/arithmetic.tsx",
       "--dry-run",
       "--rule",
       "react/nope",
@@ -127,7 +127,7 @@ describe("hugaw CLI (built)", () => {
 
   it("exits 2 for a formatter that is not installed", async () => {
     const { code, stderr } = await hugaw([
-      "fixtures/should-skip/dep-array.tsx",
+      "fixtures/pointless-usememo/should-skip/dep-array.tsx",
       "--format",
       "definitely-not-installed",
     ], NO_NETWORK)
@@ -137,7 +137,7 @@ describe("hugaw CLI (built)", () => {
 
   it("prints pure JSON on stdout with stats on stderr", async () => {
     const { code, stdout, stderr } = await hugaw([
-      "fixtures/should-skip/dep-array.tsx",
+      "fixtures/pointless-usememo/should-skip/dep-array.tsx",
       "--format",
       "json",
     ], NO_NETWORK)
@@ -147,7 +147,7 @@ describe("hugaw CLI (built)", () => {
   })
 
   it("writes no ANSI escapes when stdout is not a TTY", async () => {
-    const { stdout } = await hugaw(["fixtures/should-skip/dep-array.tsx"], NO_NETWORK)
+    const { stdout } = await hugaw(["fixtures/pointless-usememo/should-skip/dep-array.tsx"], NO_NETWORK)
     expect(stdout.includes(ANSI_CSI)).toBe(false)
     expect(stdout).toContain("✓ no findings · 1 candidates, 1 skipped statically, 0 judged")
   })

@@ -7,7 +7,8 @@ import { referencesWithin } from "./references.js"
 import { unitName, unitOf } from "./units.js"
 
 const cwd = resolve(import.meta.dirname, "../../..")
-const fixture = (rel: string) => resolve(cwd, "fixtures", rel)
+// Fixtures are grouped per rule; this adapter test borrows one.
+const fixture = (rel: string) => resolve(cwd, "fixtures", "pointless-usememo", rel)
 
 function inMemory(source: string, name = "sample.tsx") {
   const project = new Project({
