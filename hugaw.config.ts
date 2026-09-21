@@ -1,5 +1,5 @@
-import { defineConfig } from "hugaw"
-import react from "hugaw/react"
+import { defineConfig } from "hugaw";
+import react from "hugaw/react";
 
 /**
  * hugaw linting its own fixtures — the dogfood config.
@@ -17,6 +17,6 @@ export default defineConfig({
     // every rule a listed plugin owns at its own `defaultSeverity`, so naming
     // one here does not disable the others.
     "react/pointless-usememo": "warn",
-    "react/useeffect-alternatives": "warn",
+    "react/useeffect-alternatives": "error",
   },
-})
+});

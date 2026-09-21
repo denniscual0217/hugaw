@@ -274,6 +274,7 @@ const RICH_SLICES: Record<string, JsonValue> = {
 /** Every reportable label prints its own fix, and only its own. */
 const FIXES: [string, string][] = [
   ["render_computation", "compute it during render"],
+  ["use_linked_state", "keep it editable — replace the `isOn` state and the effect with `useLinkedState(isOn, …)`"],
   ["derive_by_id", "keep only the id in state"],
   ["key_prop", "render `Toggle` with `key={isOn}`"],
   ["event_handler", "do that work in the handler that sets `isOn`"],

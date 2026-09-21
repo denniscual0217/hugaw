@@ -9,7 +9,7 @@ const run = (cmd, args, cwd) => {
 }
 const rule = (label) => console.log("\n" + "─".repeat(72) + "\n" + label + "\n" + "─".repeat(72))
 
-rule("eslint-plugin-react-you-might-not-need-an-effect  (all 9 rules)")
+rule("eslint-plugin-react-you-might-not-need-an-effect  (all 9 rules, at error)")
 console.log(run("npx", ["eslint", "src", "--no-warn-ignored"], import.meta.dirname).trim() || "  no findings")
 
 rule("hugaw  react/useeffect-alternatives")
@@ -17,6 +17,6 @@ if (!process.env["TYPESAFE_API_KEY"] && !existsSync(new URL("./.env", import.met
   console.log("  skipped — TYPESAFE_API_KEY is not set (export it, or put a .env here)")
 } else {
   const root = new URL("..", import.meta.url).pathname
-  console.log(run("node", ["dist/bin.js", "tests/src/**/*.tsx", "--config", "tests/hugaw.config.ts"], root).trim() || "  no findings")
+  console.log(run("node", ["dist/bin.js", "sample/src/**/*.tsx", "--config", "sample/hugaw.config.ts"], root).trim() || "  no findings")
 }
 console.log()

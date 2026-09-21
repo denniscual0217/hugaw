@@ -1,4 +1,4 @@
-import { choice } from "../../../core/index.js"
+import { choice } from "../../../core/index.js";
 
 /**
  * The paid half of rule #2, kept in its own module so the live ablation can
@@ -21,10 +21,10 @@ import { choice } from "../../../core/index.js"
  * *not*, and on what evidence the neighbour would have won instead.
  */
 export type Criterion = {
-  readonly description: string
-  readonly evidence: string
-  readonly contrast: string
-}
+  readonly description: string;
+  readonly evidence: string;
+  readonly contrast: string;
+};
 
 /**
  * Thirteen outcomes, ordered so the null hypothesis anchors the list: keep it,
@@ -58,17 +58,25 @@ export const REPLACEMENTS = {
     description:
       "Delete the effect and the state it writes, and compute the value during render instead — plainly when it is cheap, inside `useMemo` when the transform is expensive enough to be worth memoising. Either way it is one render pass, with no stale frame and no loop hazard; which of the two is a question about cost, not about whether the effect should exist.",
     evidence:
-      "A `state-setter` call in `effect_body.calls` whose `inputs` are props or state, with `nested` null, no externals, and that state written nowhere else in `component_state.state[].writes`.",
+      'A `state-setter` call in `effect_body.calls` whose `inputs` are props or state, with `nested` null, no externals, and that state written nowhere else in `component_state.state[].writes` — in particular no entry with `within: "handler"`.',
     contrast:
-      "Not `derive_by_id`: nothing here is edited by the user between changes of its inputs, so the value is a pure function of them. Not `collapse_to_handler`: the written state is a function of the dependencies rather than a transition from its own previous value.",
+      'Not `use_linked_state` and not `derive_by_id`: those two are for state the user also edits. If `component_state.state[].writes` holds any `within: "handler"` entry for this state, the user types into it or picks it, and computing it during render throws that away on the very next render — choose between those two instead, never this one. This option is only for a value nothing but the effect ever writes. Not `collapse_to_handler`: the written state is a function of the dependencies rather than a transition from its own previous value.',
+  },
+  use_linked_state: {
+    description:
+      "Keep the state and delete the effect. This value is the user's to edit — they type into it or pick it — and it has to start again from a fresh value whenever a source prop changes. That is neither a derivation (the edits have to survive in between) nor a reset (the new starting point is *computed from the source*, not cleared). Link the two instead: a hook of the shape `useLinkedState(source, calculate)` holds an editable value, leaves it alone while `source` is unchanged, and recalculates it in the same render when `source` changes — no effect, no extra render, no frame in which the old value is still on screen.",
+    evidence:
+      'Two things together in `component_state.state[].writes` for this state: an entry with `within: "effect"` **and** an entry with `within: "handler"` — so something other than this effect owns the value — and the effect\'s write takes its value *from the dependency*, a `state-setter` whose `arguments`/`inputs` name the source prop (`setName(user.name)` on `[user.id]`), rather than clearing it.',
+    contrast:
+      "Not `render_computation` and not `derive_by_id`: **both of those delete the user's ability to edit this value, which is a breaking change, not a refactor.** Computing it during render overwrites every keystroke on the next render. Storing an id and deriving does not work either: what the user typed *is* the value, and no id can be looked up to reconstruct it — that option is for a value the effect *clears*, not one it seeds from the source. Not `key_prop`: only this one value follows the source, and the rest of the component's state must survive.",
   },
   derive_by_id: {
     description:
-      "Delete the effect and the state it clears. It adjusts one slice of state when a prop changes — typically resetting a selection because the list changed. Keep only the id in state and derive the object during render (`const selection = items.find(i => i.id === selectedId) ?? null`): it is then correct in the same render, with no effect and no stale window.",
+      "Delete the effect and the state it clears. When a prop changes, this effect *clears* one slice of state — typically a selection, because the list it pointed into changed. The user's contribution here is a choice, and a choice can be kept as an id: store `selectedId` and derive the object during render (`const selection = items.find(i => i.id === selectedId) ?? null`). It is then correct in the same render with no effect and no stale window, and when the prop changes the lookup simply finds nothing, which is the reset the effect was doing by hand.",
     evidence:
-      "One `state-setter` called with a constant or an initial value, keyed on the prop or collection the value follows, and that same state also written in a handler (`component_state.state[].writes` with `within: \"handler\"`) — the user picks it, the prop change invalidates it.",
+      'One `state-setter` whose argument is a constant or the state\'s own initial value — `null`, `\'\'`, `[]` — with no `inputs` taken from the dependency, keyed on the prop or collection the value points into. The same state is also written `within: "handler"`, because the user picks it.',
     contrast:
-      "Not `key_prop`: only this one slice follows the prop, and every other state the component declares must survive the change. Not `render_computation`: the user writes this state directly too, so it is not a pure derivation — what gets derived is the object the stored id points at.",
+      "Not `use_linked_state`: the whole difference is *what the effect writes*. Here it clears the state to a constant, so the user's choice survives as an id and is looked up again; there it writes a value computed from the source, which no stored id can reconstruct. Read the setter's argument to tell them apart. Not `key_prop`: only this one slice follows the prop, and every other state the component declares must survive the change. Not `render_computation`: the user writes this state directly too, so it is not a pure derivation — what gets derived is the object the stored id points at.",
   },
   key_prop: {
     description:
@@ -98,7 +106,7 @@ export const REPLACEMENTS = {
     description:
       "Delete it. It calls a callback prop to tell the parent that local state changed. Call the callback in the same handler that sets the state, with the next value, and the round trip through render disappears.",
     evidence:
-      "A `prop-callback` call in `effect_body.calls` whose `inputs` are local state, with that state also written `within: \"handler\"`.",
+      'A `prop-callback` call in `effect_body.calls` whose `inputs` are local state, with that state also written `within: "handler"`.',
     contrast:
       "Not `event_handler`: the callee is a callback supplied from outside, not an external side effect. Not `lift_fetch`: what travels up is this unit's own user state, not data fetched from a server.",
   },
@@ -138,7 +146,7 @@ export const REPLACEMENTS = {
     description:
       "Keep it, but wrap it in a named mount-only hook of the shape `useMountEffect(effect)`. It genuinely synchronises with an external system once when this instance mounts, has empty dependencies by design and usually returns a cleanup; the named hook makes that intent explicit and puts the lint suppression in one place.",
     evidence:
-      "`depsKind: \"empty\"`, a cleanup, and externals or resolved callees that set up a widget, observer, listener or connection for this instance.",
+      '`depsKind: "empty"`, a cleanup, and externals or resolved callees that set up a widget, observer, listener or connection for this instance.',
     contrast:
       "Not `keep_effect`: the dependency array is empty on purpose and nothing should re-run it. Not `module_init`: this is per instance and has a teardown. Not `external_store`: this effect drives something, rather than reading a value out of it into state.",
   },
@@ -150,16 +158,16 @@ export const REPLACEMENTS = {
     contrast:
       "Not `keep_effect`: that one has no over-reactive dependency — every dep is a reason to re-synchronise. Not `event_handler`: the effect is still needed, and only a read moves out of it.",
   },
-} as const satisfies Record<string, Criterion>
+} as const satisfies Record<string, Criterion>;
 
-export type Replacement = keyof typeof REPLACEMENTS
+export type Replacement = keyof typeof REPLACEMENTS;
 
 /** The three outcomes that leave the effect in place. */
 export const KEEP_FAMILY: ReadonlySet<string> = new Set([
   "keep_effect",
   "mount_effect",
   "effect_event",
-])
+]);
 
 /**
  * There is deliberately only one question.
@@ -184,12 +192,12 @@ export const KEEP_FAMILY: ReadonlySet<string> = new Set([
  * do when two questions disagree.
  */
 export const replacement = choice(
-  "What should happen to the effect in `effect_call`? Pick the single best-fitting outcome. Use `effect_body` for what it calls and touches, `component_state` for which state it writes and where else that state is written, and `component_source` for the whole picture. Each option's `contrast` names the neighbour it is not and says what would have made that neighbour win. When `component_state.owner.kind` is `\"hook\"` the unit is a custom hook, not a component: \"the parent\" means the caller of the hook, and a `prop-callback` is an argument the caller passed in.",
+  'What should happen to the effect in `effect_call`? Pick the single best-fitting outcome. Use `effect_body` for what it calls and touches, `component_state` for which state it writes and where else that state is written, and `component_source` for the whole picture. Each option\'s `contrast` names the neighbour it is not and says what would have made that neighbour win. When `component_state.owner.kind` is `"hook"` the unit is a custom hook, not a component: "the parent" means the caller of the hook, and a `prop-callback` is an argument the caller passed in.',
   REPLACEMENTS,
-)
+);
 
 export const effectQuestions = {
   replacement,
-}
+};
 
-export type EffectQuestions = typeof effectQuestions
+export type EffectQuestions = typeof effectQuestions;

@@ -128,6 +128,10 @@ export function summariseChoice(
 const FIX_PHRASE: Record<string, (facts: EffectFacts) => string> = {
   render_computation: () =>
     "compute it during render — inside `useMemo` if the work is expensive — and delete the state and the effect",
+  use_linked_state: (facts) =>
+    `keep it editable — replace the \`${state(facts)}\` state and the effect with ` +
+    `\`useLinkedState(${dep(facts)}, …)\`, which leaves the value alone until \`${dep(facts)}\` ` +
+    "changes and recalculates it in the same render",
   derive_by_id: () =>
     "keep only the id in state, derive the value during render, and delete the effect",
   key_prop: (facts) =>

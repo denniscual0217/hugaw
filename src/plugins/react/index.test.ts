@@ -415,6 +415,30 @@ describe("react/useeffect-alternatives — should-warn", () => {
     ])
   })
 
+  it("editable-state-follows-prop.tsx picks the one fix that keeps it editable", async () => {
+    // Measured live: `use_linked_state` 0.99. Before the criteria split this
+    // file scored `derive_by_id` 0.56 / `render_computation` 0.27 — two fixes
+    // that both delete the user's ability to type. The assertion is on the
+    // label, not just the message, so a wording change that quietly moves the
+    // mass back cannot pass.
+    const { judge } = createMockJudge(replacing("use_linked_state"))
+    const report = await runFixture("should-warn/editable-state-follows-prop.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.errors).toEqual([])
+    expect(report.findings.length).toBe(1)
+    const finding = report.findings[0]!
+    expect(finding.facts["replacement"]).toBe("use_linked_state")
+    expect(finding.message).toContain("sets `name` from `user`")
+    expect(finding.message).toContain("keep it editable")
+    expect(finding.message).toContain("`useLinkedState(user.id, …)`")
+    // The two fixes that would break it must not appear.
+    expect(finding.message).not.toContain("compute it during render")
+    expect(finding.message).not.toContain("keep only the id in state")
+  })
+
   it("fetch-cross-file.tsx caveats the callee it could not read", async () => {
     const { judge } = createMockJudge(replacing("data_library"))
     const report = await runFixture("should-warn/fetch-cross-file.tsx", {

@@ -23,10 +23,13 @@ describe("the replacement Choice", () => {
     // `use_memo` folded into `render_computation` (one decision, not two), and
     // `use_linked_state` replaced by what SKILL.md §6 actually prescribes.
     expect(LABELS).not.toContain("use_memo")
-    expect(LABELS).not.toContain("use_linked_state")
     expect(LABELS).toContain("render_computation")
+    // `derive_by_id` and `use_linked_state` are both here and are not
+    // alternatives to each other: they split on what the effect *writes* —
+    // a constant it clears, or a value seeded from the source.
     expect(LABELS).toContain("derive_by_id")
-    expect(LABELS).toHaveLength(13)
+    expect(LABELS).toContain("use_linked_state")
+    expect(LABELS).toHaveLength(14)
   })
 
   it("gives every option all three fields", () => {
@@ -45,6 +48,25 @@ describe("the replacement Choice", () => {
       const named = LABELS.filter((other) => other !== label && criterion.contrast.includes(other))
       expect(named.length, `${label} names no neighbour`).toBeGreaterThan(0)
     }
+  })
+
+  it("splits editable-state-follows-a-prop on what the effect writes", () => {
+    // Both options describe state the user also edits, so the handler write
+    // alone cannot separate them — measured, case 5 (`setSelection(null)`)
+    // and case 3 (`setName(user.name)`) have identical `writes` shapes. The
+    // setter's argument is the fact that does separate them, and each side
+    // has to say so or the more general wording absorbs the other's mass.
+    expect(REPLACEMENTS.use_linked_state.evidence).toContain("from the dependency")
+    expect(REPLACEMENTS.derive_by_id.evidence).toContain("no `inputs` taken from the dependency")
+    expect(REPLACEMENTS.use_linked_state.contrast).toContain("derive_by_id")
+    expect(REPLACEMENTS.derive_by_id.contrast).toContain("use_linked_state")
+  })
+
+  it("warns that computing during render breaks an editable value", () => {
+    // The trap this project exists to avoid: `render_computation` held 27% on
+    // an editable field, and its fix would delete the user's ability to type.
+    expect(REPLACEMENTS.render_computation.contrast).toContain('within: "handler"')
+    expect(REPLACEMENTS.use_linked_state.contrast).toContain("breaking change")
   })
 
   it("pairs the two that SKILL.md's own example satisfies at once", () => {

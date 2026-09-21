@@ -5,7 +5,7 @@
   "description": "Runs ESLint and hugaw over the same file so their findings can be compared.",
   "scripts": {
     "eslint": "eslint src --no-warn-ignored",
-    "hugaw": "node ../dist/bin.js \"tests/src/**/*.tsx\" --config ./hugaw.config.ts",
+    "hugaw": "cd .. && node dist/bin.js \"sample/src/**/*.tsx\" --config sample/hugaw.config.ts",
     "compare": "node compare.mjs"
   },
   "devDependencies": {

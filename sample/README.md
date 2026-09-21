@@ -1,4 +1,4 @@
-# tests/ — ESLint vs hugaw, same file
+# sample/ — ESLint vs hugaw, same file
 
 **This is not the vitest suite.** That is `../test/`, and `pnpm test` from the repo
 root does not glob this directory (nor does `tsconfig.json`). This directory has its
@@ -10,14 +10,14 @@ It exists to answer one question: on the same source, what does each tool find?
 ## Run it
 
 ```sh
-cd tests && npm install     # once
+cd sample && npm install     # once
 npm run compare             # both tools, side by side
 ```
 
 Or separately:
 
 ```sh
-npm run eslint              # eslint-plugin-react-you-might-not-need-an-effect, all 9 rules
+npm run eslint              # eslint-plugin-react-you-might-not-need-an-effect, all 9 rules, at error
 npm run hugaw               # hugaw, react/useeffect-alternatives only
 ```
 
