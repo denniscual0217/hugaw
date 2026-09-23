@@ -204,6 +204,22 @@ export function bodyCalls(
   return { calls, resolved, unresolved: unresolved.filter((name) => !explained.has(name)) }
 }
 
+/**
+ * A call named by its root, so a chain is reported once.
+ *
+ * `fetch(u).then(parse).then(setUser)` is three `CallExpression`s, and all
+ * three classify off the same leftmost identifier — so all three come back
+ * `global` and the observation named the same chain three times, once per
+ * link. Only the root is a call the reader can act on; `.then` is how it
+ * continues.
+ *
+ * Both the direct path and the one-level-into-a-helper path filter through
+ * this, so the two cannot drift.
+ */
+export function isRootCall(row: { readonly callee: string }): boolean {
+  return !row.callee.includes(".")
+}
+
 /** Kinds the payload identifies by origin, so `unresolved` need not. */
 const EXPLAINED_KINDS = new Set(["state-setter", "prop-callback", "hook-result"])
 

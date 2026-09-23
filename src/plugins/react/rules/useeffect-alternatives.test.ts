@@ -879,3 +879,98 @@ describe("no em-dash reaches a message", () => {
     expect(decide({ render_computation: 1 })?.message).not.toContain(":")
   })
 })
+
+/* ── a call chain is one call ────────────────────────────────────────────── */
+
+describe("a member chain is named once, by its root", () => {
+  /**
+   * `fetch(u).then(parse).then(setUser)` is three `CallExpression`s, and each
+   * classifies off the same leftmost identifier, so all three came back
+   * `global` and the sentence named the same chain three times. The rows are
+   * what the payload carries; only the observation collapses them.
+   */
+  const CHAIN: Record<string, JsonValue> = {
+    component_state: {
+      owner: { name: "Profile", kind: "component" },
+      props: ["userId"],
+      state: [
+        { value: "user", setter: "setUser", hook: "useState", initial: "null", writes: [] },
+      ],
+      hookResults: [],
+    },
+    effect_body: {
+      calls: [
+        {
+          line: 4,
+          callee: "fetch(`/api/users/${userId}`).then(r => r.json()).then",
+          kind: "global",
+          arguments: "setUser",
+          inputs: [],
+          nested: null,
+        },
+        {
+          line: 4,
+          callee: "fetch(`/api/users/${userId}`).then",
+          kind: "global",
+          arguments: "r => r.json()",
+          inputs: [],
+          nested: null,
+        },
+        {
+          line: 4,
+          callee: "fetch",
+          kind: "global",
+          arguments: "`/api/users/${userId}`",
+          inputs: ["userId"],
+          nested: null,
+        },
+      ],
+      resolved: {},
+      unresolved: [],
+      externals: [],
+    },
+  }
+
+  it("names the root call and not the links", () => {
+    const message = decide({ data_library: 1 }, { slices: CHAIN })?.message ?? ""
+    expect(message).toContain("calls `fetch(`/api/users/${userId}`)`")
+    expect(message).not.toContain(".then")
+  })
+
+  it("keeps the state a later link hands a setter to", () => {
+    // `.then(setUser)` never calls the setter, so the write is only visible
+    // in that row's arguments. Collapsing the *observation* must not drop it:
+    // "and sets `user`" is what tells an agent which state to delete.
+    const verdict = decide({ data_library: 1 }, { slices: CHAIN })
+    expect(verdict?.facts.statesWritten).toEqual(["user"])
+    expect(verdict?.message).toContain("and sets `user`")
+    expect(verdict?.message).toContain("the `user` state with the project's data-fetching hook")
+  })
+
+  it("still names a separate call beside the chain", () => {
+    const message =
+      decide(
+        { data_library: 1 },
+        {
+          slices: {
+            ...CHAIN,
+            effect_body: {
+              ...(CHAIN["effect_body"] as Record<string, JsonValue>),
+              calls: [
+                {
+                  line: 3,
+                  callee: "track",
+                  kind: "imported",
+                  arguments: '"profile_view"',
+                  inputs: [],
+                  nested: null,
+                },
+                ...((CHAIN["effect_body"] as { calls: JsonValue[] }).calls),
+              ],
+            },
+          },
+        },
+      )?.message ?? ""
+    expect(message).toContain('calls `track("profile_view")` and `fetch(`/api/users/${userId}`)`')
+  })
+})

@@ -2,7 +2,7 @@ import { Node, SyntaxKind } from "ts-morph"
 import type { CallExpression, Identifier } from "ts-morph"
 import { resolveDeclaration } from "../../../adapters/typescript/imports.js"
 import type { FunctionLike } from "../../../adapters/typescript/types.js"
-import { bodyCalls } from "./body-calls.js"
+import { bodyCalls, isRootCall } from "./body-calls.js"
 import { effectCallbackOf, externalReferences } from "./effects.js"
 import { stateSetters } from "./state-setters.js"
 
@@ -114,11 +114,7 @@ export function indirectCallsOf(call: CallExpression, unit: FunctionLike): Indir
       ),
       outwardCalls: unique(
         calls
-          // Bare identifiers only. `fetch(url).then(parse).then(setUser)` is
-          // three CallExpressions whose leftmost identifier is the same
-          // ambient `fetch`, so all three classify `global` and the chain
-          // would be reported once per link.
-          .filter((row) => OUTWARD.has(row.kind) && !row.callee.includes("."))
+          .filter((row) => OUTWARD.has(row.kind) && isRootCall(row))
           .map((row) => `${row.callee}(${row.arguments})`),
       ),
       externals: externalReferences(fn),

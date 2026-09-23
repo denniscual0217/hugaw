@@ -5,6 +5,7 @@ import { interpolate } from "../../../core/index.js"
 import type { JsonValue, OptionsReview, RuleOptions, Selection, Slices } from "../../../core/index.js"
 import type { FunctionLike, TsTypes } from "../../../adapters/typescript/index.js"
 import { effectCallbackOf } from "../analysis/effects.js"
+import { isRootCall } from "../analysis/body-calls.js"
 import { indirectCallsOf } from "../analysis/indirect.js"
 import type { IndirectCall } from "../analysis/indirect.js"
 import { isReactApi } from "../analysis/react-imports.js"
@@ -813,7 +814,13 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
       ]),
       outwardCalls: unique(
         rows
-          .filter((row) => NAMEABLE_KINDS.has(row.kind) && !WRITE_NAME.test(row.callee))
+          // `isRootCall` collapses a member chain to the call it hangs off.
+          // The rows themselves are untouched, so a setter handed over by a
+          // later link — `.then(setUser)` — is still found by `handedOver`
+          // and still named.
+          .filter(
+            (row) => NAMEABLE_KINDS.has(row.kind) && isRootCall(row) && !WRITE_NAME.test(row.callee),
+          )
           .map((row) => `${row.callee}(${row.arguments})`),
       ),
       externals: unique([
