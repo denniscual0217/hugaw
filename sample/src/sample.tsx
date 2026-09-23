@@ -1,5 +1,46 @@
 import { useState, useEffect } from "react";
 
+function UserCard({ user }) {
+  const [displayName, setDisplayName] = useState("");
+
+  function syncUser() {
+    if (!user) return;
+
+    updateDisplayName(user);
+  }
+
+  function updateDisplayName(value) {
+    setDisplayName(value.firstName + " " + value.lastName);
+  }
+
+  useEffect(() => {
+    syncUser();
+  }, [user]);
+
+  return <span>{displayName}</span>;
+}
+
+function Counter() {
+  const [count, setCount] = useState(0);
+  const [finished, setFinished] = useState(false);
+
+  function evaluateCount(value) {
+    if (value >= 10) {
+      setFinished(true);
+    }
+  }
+
+  useEffect(() => {
+    evaluateCount(count);
+  }, [count]);
+
+  return (
+    <button onClick={() => setCount((c) => c + 1)}>
+      {finished ? "Finished" : count}
+    </button>
+  );
+}
+
 function Payment() {
   const [status, setStatus] = useState("idle");
 
