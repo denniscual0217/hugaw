@@ -260,15 +260,31 @@ export function observationOf(facts: EffectFacts): string {
         : call,
     )
   }
+  // "only" is earned, not decorative. It is true exactly when setting state is
+  // the whole of what the effect does, which is also exactly when deleting it
+  // is safe. If the effect touches anything outside React as well, "only"
+  // would be the message asserting more than it observed.
+  const nothingElse = parts.length === 0
   if (facts.statesWritten.length > 0) {
-    parts.push(
+    const sets =
       facts.setterInputs.length > 0
         ? `sets ${list(facts.statesWritten)} from ${list(facts.setterInputs)}`
-        : `sets ${list(facts.statesWritten)}`,
-    )
+        : `sets ${list(facts.statesWritten)}`
+    parts.push(nothingElse ? `only ${sets}` : sets)
   }
-  if (parts.length === 0) return "this rule cannot describe what it does"
-  return parts.join(" and ")
+  if (parts.length === 0) return "This rule cannot describe what this effect does."
+  return `This effect ${sentenceList(parts)}.`
+}
+
+/** `a` · `a and b` · `a, b and c` — for clauses, where `list()` joins values. */
+function sentenceList(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? ""
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
+}
+
+/** Upper-cases the first letter, so a fix fragment can open a sentence. */
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 /**
@@ -281,7 +297,7 @@ export function observationOf(facts: EffectFacts): string {
  * missing one — and never at the cost of a clause that changes what the
  * reader does next.
  */
-export const WORD_BUDGET = 35
+export const WORD_BUDGET = 45
 
 export function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length
@@ -335,7 +351,7 @@ export function buildMessage(facts: EffectFacts): string {
 function assemble(facts: EffectFacts, budget: Budgeted): string {
   const fix =
     FIX_PHRASE[facts.replacement]?.(facts, budget.aside) ?? "replace it with the primitive that fits"
-  let message = `useEffect should not exist: ${observationOf(facts)}; ${fix}`
+  const sentences: string[] = [observationOf(facts), `${capitalise(fix)}.`]
 
   const alternative =
     budget.alternative &&
@@ -343,15 +359,15 @@ function assemble(facts: EffectFacts, budget: Budgeted): string {
     facts.runnerUpMass >= EITHER_OR_MIN &&
     !KEEP_FAMILY.has(facts.runnerUp) &&
     FIX_PHRASE[facts.runnerUp] !== undefined
-      // The alternative never carries the aside: it is already the clause
-      // most likely to be dropped, and a parenthetical inside it would be
-      // the first thing to go anyway.
-      ? FIX_PHRASE[facts.runnerUp]?.(facts, false)
+      ? // The alternative never carries the aside: it is already the clause
+        // most likely to be dropped, and a parenthetical inside it would be
+        // the first thing to go anyway.
+        FIX_PHRASE[facts.runnerUp]?.(facts, false)
       : null
-  if (alternative) message += `; or ${alternative}`
+  if (alternative) sentences.push(`Or ${alternative}.`)
 
-  for (const caveat of caveatsOf(facts, budget.keepCaveat)) message += `; ${caveat}`
-  return message
+  sentences.push(...caveatsOf(facts, budget.keepCaveat))
+  return sentences.join(" ")
 }
 
 export function buildMountMessage(facts: EffectFacts): string {
@@ -372,17 +388,24 @@ export function buildMountMessage(facts: EffectFacts): string {
 
 function assembleMount(facts: EffectFacts, rationale: boolean, key: boolean): string {
   const what = facts.externals.length > 0 ? ` with ${list(facts.externals)}` : ""
-  let message = `useEffect with [] is a mount-only sync${what}: wrap it in the project's \`useMountEffect\``
-  if (rationale) message += " so the intent is explicit and the lint suppression lives in one place"
+  const sentences: string[] = [
+    `This effect has empty dependencies and synchronises once on mount${what}.`,
+    rationale
+      ? "Wrap it in the project's `useMountEffect` so the intent is explicit and the lint " +
+        "suppression lives in one place."
+      : "Wrap it in the project's `useMountEffect`.",
+  ]
 
   const read = facts.readsOutsideDeps[0]
   if (key && read !== undefined) {
-    message += `; it also reads \`${read}\`, so pass \`key={${read}}\` at the call site if that should restart it`
+    sentences.push(
+      `It also reads \`${read}\`. Pass \`key={${read}}\` at the call site if that should restart it.`,
+    )
   }
   // No keep-family caveat here: this finding *is* "keep it, wrapped", so
-  // "the model gave 33% to keeping it" would argue against nothing.
-  for (const caveat of caveatsOf(facts, false)) message += `; ${caveat}`
-  return message
+  // "may be worth keeping" would argue against nothing.
+  sentences.push(...caveatsOf(facts, false))
+  return sentences.join(" ")
 }
 
 /**
@@ -402,15 +425,17 @@ function assembleMount(facts: EffectFacts, rationale: boolean, key: boolean): st
 function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
   const caveats: string[] = []
   if (facts.unresolvedCallees.length > 0) {
-    const n = facts.unresolvedCallees.length
+    const names = facts.unresolvedCallees.map((name) => `\`${name}\``)
+    const one = names.length === 1
     caveats.push(
-      `${n} ${n === 1 ? "callee" : "callees"} (${facts.unresolvedCallees.join(", ")}) ` +
-        `unresolved across files, verify what ${n === 1 ? "it does" : "they do"} before removing`,
+      `${sentenceList(names)} ${one ? "is" : "are"} defined in another file and ` +
+        `${one ? "was" : "were"} not read. Check what ${one ? "it does" : "they do"} before removing.`,
     )
   }
   if (facts.callbackName !== null && !facts.callbackResolved) {
     caveats.push(
-      `the effect body is \`${facts.callbackName}\`, defined elsewhere, verify before removing`,
+      `The effect body is \`${facts.callbackName}\`, which is defined elsewhere. ` +
+        "Verify before removing.",
     )
   }
   // The write is named in the observation but not confirmed as React state,
@@ -418,13 +443,14 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
   if (facts.statesWritten.length === 0 && facts.unresolvedWrites.length > 0) {
     const hook = facts.unresolvedWriteHook
     caveats.push(
-      `\`${facts.unresolvedWrites[0] as string}\` looks like a state setter but ` +
+      `\`${facts.unresolvedWrites[0] as string}\` looks like a state setter, but ` +
         (hook === null
-          ? "does not resolve to React state, so verify before removing"
-          : `came from a \`${hook}\` that does not resolve to React's, so check this file's imports before removing`),
+          ? "it does not resolve to React state. Verify before removing."
+          : `it came from a \`${hook}\` that does not resolve to React's. ` +
+            "Check this file's imports before removing."),
     )
   }
-  // Nothing was nameable at all. Saying so is the point: the fix below is the
+  // Nothing was nameable at all. Saying so is the point: the fix above is the
   // model's, and the evidence for it is not in this message.
   if (
     facts.statesWritten.length === 0 &&
@@ -432,7 +458,7 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
     facts.outwardCalls.length === 0 &&
     facts.externals.length === 0
   ) {
-    caveats.push("the effect's writes could not be resolved, so verify before removing")
+    caveats.push("The effect's writes could not be resolved. Verify before removing.")
   }
   if (
     keepRunnerUp &&
@@ -440,7 +466,7 @@ function caveatsOf(facts: EffectFacts, keepRunnerUp: boolean): string[] {
     KEEP_FAMILY.has(facts.runnerUp) &&
     facts.runnerUpMass >= EITHER_OR_MIN
   ) {
-    caveats.push("it may be worth keeping, so verify before removing")
+    caveats.push("This effect may be worth keeping as it is. Verify before removing.")
   }
   return caveats
 }

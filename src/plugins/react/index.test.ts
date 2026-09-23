@@ -21,11 +21,11 @@ const WARN_CASES: readonly WarnCase[] = [
     line: 8,
     column: 17,
     contains: [
-      "useMemo has no effect: constant work",
+      "This useMemo does nothing. The computation is constant work",
       "`label` is only read at line 9",
-      "inline the expression and remove the dep array",
+      "Inline the expression and remove the dep array",
     ],
-    absent: ["verify before removing", "weak identity signal"],
+    absent: ["verify before removing", "The identity signal is weak"],
   },
   {
     file: "should-warn/string-format.tsx",
@@ -49,7 +49,7 @@ const WARN_CASES: readonly WarnCase[] = [
     file: "should-warn/cross-file-callee.tsx",
     line: 5,
     column: 16,
-    contains: ["1 callee (slugify) unresolved across files, verify before removing"],
+    contains: ["`slugify` is defined in another file and was not read. Check what it does before removing."],
   },
   {
     // Over-skip regression: `return show && <em/>` is the everyday render
@@ -96,20 +96,20 @@ const WARN_CASES: readonly WarnCase[] = [
   {
     // Correction 10's class, as a real fixture: `parseInt` resolves to a
     // `.d.ts` in another file, and before the ambient rule every finding like
-    // this one carried "1 callee (parseInt) unresolved across files". A
+    // this one carried "1 callee (parseInt) is defined in another file". A
     // caveat naming a global everyone can already see is noise that teaches
     // an agent to skip the caveat line.
     file: "should-warn/ambient-callee.tsx",
     line: 9,
     column: 18,
     contains: ["`amount` is only read at line 11"],
-    absent: ["unresolved across files", "verify before removing"],
+    absent: ["is defined in another file", "verify before removing"],
   },
   {
     file: "should-warn/spread-usage.tsx",
     line: 4,
     column: 17,
-    contains: ["1 of 1 usages unresolved behind a spread, verify before removing"],
+    contains: ["1 of 1 usage is hidden behind a spread. Verify before removing."],
   },
   {
     file: "should-warn/react-namespace.tsx",
@@ -121,7 +121,7 @@ const WARN_CASES: readonly WarnCase[] = [
     file: "should-warn/weak-identity-caveat.tsx",
     line: 4,
     column: 17,
-    contains: ["weak identity signal, verify no consumer compares references"],
+    contains: ["The identity signal is weak. Verify no consumer compares references."],
     script: () => ({ cost: 0.1, identity_matters: 0.3 }),
   },
 ]
@@ -203,7 +203,7 @@ describe("react/pointless-usememo — should-warn", () => {
     expect(calls[0]!.state["callee_sources"]).toEqual({ resolved: {}, unresolved: ["transform"] })
     expect(report.findings.length).toBe(1)
     expect(report.findings[0]!.message).toContain(
-      "1 callee (transform) unresolved across files, verify before removing",
+      "`transform` is defined in another file and was not read. Check what it does before removing.",
     )
   })
 })
@@ -392,9 +392,9 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(finding.nodeType).toBe("CallExpression")
     expect({ line: finding.loc.line, column: finding.loc.column }).toEqual({ line: 6, column: 3 })
     expect(finding.message).toBe(
-      "useEffect should not exist: sets `filtered` from `products`; " +
-        "compute it during render (use `useMemo` if the work is expensive) " +
-        "and delete the state and the effect",
+      "This effect only sets `filtered` from `products`. " +
+        "Compute it during render (use `useMemo` if the work is expensive) " +
+        "and delete the state and the effect.",
     )
     expect(finding.facts["keepFamilyMass"]).toBe(0)
   })
@@ -432,7 +432,7 @@ describe("react/useeffect-alternatives — should-warn", () => {
     const finding = report.findings[0]!
     expect(finding.facts["replacement"]).toBe("use_linked_state")
     expect(finding.message).toContain("sets `name` from `user`")
-    expect(finding.message).toContain("keep it editable")
+    expect(finding.message).toContain("Keep it editable")
     expect(finding.message).toContain("`useLinkedState(user.id, …)`")
     // The two fixes that would break it must not appear.
     expect(finding.message).not.toContain("compute it during render")
@@ -456,8 +456,8 @@ describe("react/useeffect-alternatives — should-warn", () => {
     const finding = report.findings[0]!
     expect(finding.message).toContain("calls `setTotal(…)` with `items`")
     expect(finding.message).toContain(
-      "`setTotal` looks like a state setter but came from a `useState` that does not " +
-        "resolve to React's, so check this file's imports before removing",
+      "`setTotal` looks like a state setter, but it came from a `useState` that does not " +
+        "resolve to React's. Check this file's imports before removing.",
     )
     expect(finding.message).not.toContain("does nothing this rule can name")
     expect(finding.facts["statesWritten"]).toEqual([])
@@ -477,7 +477,7 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(report.findings.length).toBe(1)
     const finding = report.findings[0]!
     expect(finding.facts["replacement"]).toBe("ref_callback")
-    expect(finding.message).toContain("do the work in a ref callback")
+    expect(finding.message).toContain("Do the work in a ref callback")
     expect(finding.message).toContain("which React runs as the node is attached")
   })
 
@@ -499,7 +499,7 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(report.findings.length).toBe(2)
     for (const finding of report.findings) {
       expect(finding.facts["replacement"]).toBe("collapse_to_handler")
-      expect(finding.message).toContain("compute the whole next state in the handler")
+      expect(finding.message?.toLowerCase()).toContain("compute the whole next state in the handler")
     }
     expect(report.findings.map((f) => f.loc.line)).toEqual([19, 23])
   })
@@ -516,10 +516,10 @@ describe("react/useeffect-alternatives — should-warn", () => {
     const message = report.findings[0]!.message
     expect(message).toContain("calls `fetchProduct(productId)` and sets `product`")
     expect(message).toContain(
-      "replace the effect and the `product` state with the project's data-fetching hook",
+      "Replace the effect and the `product` state with the project's data-fetching hook",
     )
     expect(message).toContain(
-      "1 callee (fetchProduct) unresolved across files, verify what it does before removing",
+      "`fetchProduct` is defined in another file and was not read. Check what it does before removing.",
     )
   })
 
@@ -534,14 +534,14 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(report.findings.length).toBe(1)
     const finding = report.findings[0]!
     expect(finding.messageId).toBe("wrapMountEffect")
-    expect(finding.message).toContain("mount-only sync with `hostRef.current`")
+    expect(finding.message).toContain("synchronises once on mount with `hostRef.current`")
     // `readsOutsideDeps` reaches the message only as a `key` suggestion and
     // never as "add it to the dependency array" — and here the length budget
     // spends it, because this fixture also carries an unresolved-callee
     // caveat, which is never dropped. The clause itself is covered in the
     // rule's own tests, where nothing crowds it out.
     expect(finding.message).not.toContain("dependency array")
-    expect(finding.message).toContain("1 callee (createEditor) unresolved across files")
+    expect(finding.message).toContain("`createEditor` is defined in another file")
     expect(finding.facts["depsKind"]).toBe("empty")
     expect(finding.facts["hasCleanup"]).toBe(true)
   })

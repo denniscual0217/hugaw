@@ -138,7 +138,7 @@ describe("the keep-family mass gate", () => {
     expect(verdict?.facts.keepFamilyMass).toBeCloseTo(0.47)
     // Still reported — 0.47 is under the bar — but the message flags that
     // keeping it is live, without publishing the number behind that.
-    expect(verdict?.message).toContain("it may be worth keeping, so verify before removing")
+    expect(verdict?.message).toContain("This effect may be worth keeping as it is. Verify before removing.")
   })
 
   it("stays quiet on a keep-family mode even below the bar", () => {
@@ -178,13 +178,13 @@ describe("wrapMountEffect — the positively gated finding", () => {
       slices: MOUNT_SLICES,
     })
     expect(verdict?.messageId).toBe("wrapMountEffect")
-    expect(verdict?.message).toContain("mount-only sync with `new ResizeObserver`")
-    expect(verdict?.message).toContain("wrap it in the project's `useMountEffect`")
+    expect(verdict?.message).toContain("synchronises once on mount with `new ResizeObserver`")
+    expect(verdict?.message).toContain("Wrap it in the project's `useMountEffect`")
   })
 
   it("names the read outside the deps as a `key`, never as a missing dependency", () => {
     const verdict = decide({ mount_effect: 0.9, keep_effect: 0.1 }, { slices: MOUNT_SLICES })
-    expect(verdict?.message).toContain("it also reads `label`, so pass `key={label}`")
+    expect(verdict?.message).toContain("It also reads `label`. Pass `key={label}`")
     expect(verdict?.message).not.toContain("dependency array")
   })
 
@@ -293,7 +293,10 @@ describe("one fix phrase per outcome", () => {
   it.each(FIXES)("%s prints its own fix", (label, phrase) => {
     const verdict = decide({ [label]: 1 }, { slices: RICH_SLICES })
     expect(verdict?.facts.replacement).toBe(label)
-    expect(verdict?.message).toContain(phrase)
+    // A fix opens a sentence when it is the primary one and follows "Or "
+    // when it is the alternative, so the case of its first letter is not
+    // this table's business.
+    expect(verdict?.message?.toLowerCase()).toContain(phrase.toLowerCase())
   })
 
   it("covers every option that is not in the keep family", () => {
@@ -317,7 +320,7 @@ describe("one fix phrase per outcome", () => {
 describe("the observation clause is built from static facts alone", () => {
   it("names the state and where it came from", () => {
     expect(decide({ render_computation: 1 })?.message).toContain(
-      "useEffect should not exist: sets `filtered` from `products`;",
+      "This effect only sets `filtered` from `products`."
     )
   })
 
@@ -326,7 +329,7 @@ describe("the observation clause is built from static facts alone", () => {
     // what a `notify_parent` effect does; leaving it out was how such a
     // finding came to describe itself as doing nothing nameable.
     expect(decide({ notify_parent: 1 }, { slices: RICH_SLICES })?.message).toContain(
-      "touches `window.localStorage` and calls `onChange(isOn)` and `postLike()` and sets `isOn`",
+      "This effect touches `window.localStorage`, calls `onChange(isOn)` and `postLike()` and sets `isOn`.",
     )
   })
 
@@ -374,7 +377,7 @@ describe("the alternative clause", () => {
     // ordering — a clause that changes what the reader does outranks one
     // that does not.
     const verdict = decide({ render_computation: 0.88, key_prop: 0.12 })
-    expect(verdict?.message).toContain("; or delete it and render `ProductList`")
+    expect(verdict?.message).toContain(". Or delete it and render `ProductList`")
     expect(verdict?.message).not.toContain("inside `useMemo`")
   })
 
@@ -383,18 +386,18 @@ describe("the alternative clause", () => {
     // the line at 38 words. The runner-up is the last thing dropped, but it
     // is still dropped: one clear instruction beats two crowded ones.
     const verdict = decide({ derive_by_id: 0.88, key_prop: 0.12 })
-    expect(verdict?.message).not.toContain("; or (")
+    expect(verdict?.message).not.toContain(". Or (")
     expect(wordCount(verdict?.message ?? "")).toBeLessThanOrEqual(WORD_BUDGET)
   })
 
   it("says nothing about a runner-up below the bar", () => {
     const verdict = decide({ derive_by_id: 0.92, key_prop: 0.08 })
-    expect(verdict?.message).not.toContain("; or (")
+    expect(verdict?.message).not.toContain(". Or (")
   })
 
   it("turns a keep-family runner-up into a caveat, not a second fix", () => {
     const verdict = decide({ data_library: 0.85, keep_effect: 0.15 })
-    expect(verdict?.message).toContain("it may be worth keeping, so verify before removing")
+    expect(verdict?.message).toContain("This effect may be worth keeping as it is. Verify before removing.")
     expect(verdict?.message).not.toContain("; or ")
   })
 
@@ -429,7 +432,7 @@ describe("caveats name the blind spot they actually found", () => {
       },
     )
     expect(verdict?.message).toContain(
-      "1 callee (fetchProduct) unresolved across files, verify what it does before removing",
+      "`fetchProduct` is defined in another file and was not read. Check what it does before removing.",
     )
   })
 
@@ -439,7 +442,7 @@ describe("caveats name the blind spot they actually found", () => {
       { data: { callbackName: "syncTitle", callbackResolved: false } },
     )
     expect(verdict?.message).toContain(
-      "the effect body is `syncTitle`, defined elsewhere, verify before removing",
+      "The effect body is `syncTitle`, which is defined elsewhere. Verify before removing.",
     )
   })
 
@@ -497,7 +500,7 @@ describe("the rule's shape", () => {
 describe("the mount finding does not argue with itself", () => {
   it("leaves the keep-family runner-up out of a finding that keeps the effect", () => {
     // Live on the fixture: mount_effect 0.64, keep_effect 0.33. "The model
-    // gave 33% to keeping it" is a caveat against deleting something this
+    // gave 33% worth keeping" is a caveat against deleting something this
     // message is not proposing to delete.
     const verdict = decide(
       { mount_effect: 0.64, keep_effect: 0.33, effect_event: 0.03 },
@@ -518,7 +521,7 @@ describe("the mount finding does not argue with itself", () => {
       },
     )
     expect(verdict?.messageId).toBe("wrapMountEffect")
-    expect(verdict?.message).not.toContain("to keeping it")
+    expect(verdict?.message).not.toContain("worth keeping")
   })
 })
 
@@ -573,8 +576,8 @@ describe("a write the payload could not confirm is state", () => {
   it("says why the write is unconfirmed, and points at the import", () => {
     const verdict = decide({ render_computation: 1 }, { slices: UNCONFIRMED })
     expect(verdict?.message).toContain(
-      "`setTotal` looks like a state setter but came from a `useState` that does not " +
-        "resolve to React's, so check this file's imports before removing",
+      "`setTotal` looks like a state setter, but it came from a `useState` that does not " +
+        "resolve to React's. Check this file's imports before removing.",
     )
   })
 
@@ -606,7 +609,7 @@ describe("an effect with nothing nameable in it", () => {
 
   it("says plainly that it cannot describe the effect", () => {
     expect(decide({ render_computation: 1 }, { slices: OPAQUE })?.message).toContain(
-      "useEffect should not exist: this rule cannot describe what it does",
+      "This rule cannot describe what this effect does.",
     )
   })
 
@@ -617,7 +620,7 @@ describe("an effect with nothing nameable in it", () => {
     const message = decide({ render_computation: 1 }, { slices: OPAQUE })?.message ?? ""
     expect(message).toContain("and delete the effect")
     expect(message).not.toContain("delete the state")
-    expect(message).toContain("the effect's writes could not be resolved, so verify before removing")
+    expect(message).toContain("The effect's writes could not be resolved. Verify before removing.")
   })
 
   it("never invents a state name for a fix that wants one", () => {
@@ -641,98 +644,68 @@ describe("an effect with nothing nameable in it", () => {
 /* ── the length budget ───────────────────────────────────────────────────── */
 
 describe("the word budget", () => {
+  /**
+   * A message that is unambiguously over budget: a long observation plus a
+   * blind-spot caveat that is never dropped. What gives way, and in what
+   * order, is then the only variable.
+   */
+  const LONG: Record<string, JsonValue> = {
+    component_state: {
+      owner: { name: "FilterableProductTable", kind: "component" },
+      props: ["products"],
+      state: [
+        { value: "filtered", setter: "setFiltered", hook: "useState", initial: "[]", writes: [] },
+      ],
+      hookResults: [],
+    },
+    effect_body: {
+      calls: [
+        {
+          line: 7,
+          callee: "setFiltered",
+          kind: "state-setter",
+          arguments: "products.filter((p) => p.inStock)",
+          inputs: ["products", "category", "searchTerm", "sortOrder"],
+          nested: null,
+        },
+      ],
+      resolved: {},
+      unresolved: ["normalise", "track"],
+      externals: ["window.localStorage", "document.title", "navigator.onLine"],
+    },
+  }
+
   it("drops the `useMemo` aside first", () => {
-    // Long observation, so the aside is what has to give.
-    const long = decide(
-      { render_computation: 1 },
-      {
-        slices: {
-          effect_body: {
-            calls: [
-              {
-                line: 7,
-                callee: "setFiltered",
-                kind: "state-setter",
-                arguments: "products.filter((p) => p.inStock)",
-                inputs: ["products", "category", "searchTerm", "sortOrder"],
-                nested: null,
-              },
-            ],
-            resolved: {},
-            unresolved: [],
-            externals: ["window.localStorage", "document.title"],
-          },
-        },
-      },
-    )
-    expect(long?.message).not.toContain("inside `useMemo`")
-    expect(long?.message).toContain("compute it during render and delete")
+    const verdict = decide({ render_computation: 1 }, { slices: LONG })
+    expect(wordCount(verdict?.message ?? "")).toBeGreaterThan(WORD_BUDGET)
+    expect(verdict?.message).not.toContain("(use `useMemo`")
+    expect(verdict?.message).toContain("Compute it during render and delete")
   })
 
-  it("keeps the aside in its original position when it fits", () => {
-    // An infix, not a suffix: dropping it must leave the sentence exactly as
-    // it would read had it never been written.
-    expect(decide({ render_computation: 1 })?.message).toContain(
-      "compute it during render (use `useMemo` if the work is expensive) " +
-        "and delete the state and the effect",
-    )
+  it("keeps the aside when the message is short enough to carry it", () => {
+    expect(decide({ render_computation: 1 })?.message).toContain("(use `useMemo`")
   })
 
-  it("drops the keep-family caveat when the line is over budget", () => {
+  it("drops the keep-family caveat next", () => {
     // The caveat and the alternative are mutually exclusive — both are built
-    // from the single runner-up — so the ordering between them is only ever
-    // exercised one at a time. Here the runner-up is in the keep family, so
-    // it is a caveat, and it goes once the aside is not enough.
-    const verdict = decide(
-      { render_computation: 0.85, keep_effect: 0.15 },
-      {
-        slices: {
-          effect_body: {
-            calls: [
-              {
-                line: 7,
-                callee: "setFiltered",
-                kind: "state-setter",
-                arguments: "products.filter((p) => p.inStock)",
-                inputs: ["products", "category", "searchTerm", "sortOrder"],
-                nested: null,
-              },
-            ],
-            resolved: {},
-            unresolved: [],
-            externals: ["window.localStorage", "document.title", "navigator.onLine"],
-          },
-        },
-      },
-    )
-    expect(verdict?.message).not.toContain("inside `useMemo`")
+    // from the single runner-up — so only one of the two is ever present to
+    // drop. Here the runner-up is in the keep family, so it is the caveat.
+    const verdict = decide({ render_computation: 0.85, keep_effect: 0.15 }, { slices: LONG })
+    expect(verdict?.message).not.toContain("(use `useMemo`")
     expect(verdict?.message).not.toContain("worth keeping")
-    expect(wordCount(verdict?.message ?? "")).toBeLessThanOrEqual(WORD_BUDGET)
   })
 
   it("keeps the keep-family caveat when it fits", () => {
     expect(decide({ render_computation: 0.85, keep_effect: 0.15 })?.message).toContain(
-      "it may be worth keeping, so verify before removing",
+      "This effect may be worth keeping as it is. Verify before removing.",
     )
   })
 
-  it("never drops an unresolved-callee caveat, even over budget", () => {
-    const verdict = decide(
-      { render_computation: 1 },
-      {
-        slices: {
-          effect_body: {
-            calls: [],
-            resolved: {},
-            unresolved: ["fetchProduct", "normalise", "track"],
-            externals: [],
-          },
-        },
-      },
-    )
+  it("never drops a blind-spot caveat, even over budget", () => {
+    const verdict = decide({ render_computation: 1 }, { slices: LONG })
     // That caveat names code the reader cannot see; dropping it would turn
-    // "verify this first" into silence.
-    expect(verdict?.message).toContain("unresolved across files")
+    // "check this first" into silence.
+    expect(verdict?.message).toContain("are defined in another file and were not read")
     expect(wordCount(verdict?.message ?? "")).toBeGreaterThan(WORD_BUDGET)
   })
 
@@ -745,7 +718,7 @@ describe("the word budget", () => {
   it("counts words the way the budget does", () => {
     expect(wordCount("  one   two three ")).toBe(3)
     expect(wordCount("")).toBe(0)
-    expect(WORD_BUDGET).toBe(35)
+    expect(WORD_BUDGET).toBe(45)
   })
 })
 
@@ -773,7 +746,7 @@ describe("the mount message sheds its own clauses", () => {
         },
       },
     )
-    expect(verdict?.message).toContain("pass `key={initialValue}`")
+    expect(verdict?.message).toContain("Pass `key={initialValue}`")
     // The rationale for wrapping goes first: a reader being told to use
     // `useMountEffect` can infer why.
     expect(verdict?.message).not.toContain("lint suppression")
@@ -794,8 +767,8 @@ describe("the mount message sheds its own clauses", () => {
         },
       },
     )
-    expect(verdict?.message).toContain("unresolved across files")
-    expect(verdict?.message).not.toContain("pass `key=")
+    expect(verdict?.message).toContain("is defined in another file")
+    expect(verdict?.message).not.toContain("Pass `key=")
     expect(wordCount(verdict?.message ?? "")).toBeLessThanOrEqual(WORD_BUDGET)
   })
 })
@@ -871,7 +844,8 @@ describe("no em-dash reaches a message", () => {
     expect(message).not.toContain("))")
   })
 
-  it("marks the claim with a colon", () => {
-    expect(decide({ render_computation: 1 })?.message).toMatch(/^useEffect should not exist: /)
+  it("opens with a sentence about the code, not a label and a colon", () => {
+    expect(decide({ render_computation: 1 })?.message).toMatch(/^This effect only sets /)
+    expect(decide({ render_computation: 1 })?.message).not.toContain(":")
   })
 })

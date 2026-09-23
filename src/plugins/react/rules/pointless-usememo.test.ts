@@ -136,7 +136,7 @@ describe("pointless-usememo decide() thresholds", () => {
     expect(verdict?.facts.spreadUsages).toBe(1)
     expect(verdict?.facts.unclassifiedUsages).toBe(1)
     expect(verdict?.facts.unclassifiedLines).toEqual([7])
-    expect(verdict?.message).toContain("1 of 3 usages unresolved behind a spread")
+    expect(verdict?.message).toContain("1 of 3 usages is hidden behind a spread")
     expect(verdict?.message).toContain("1 of 3 usages could not be classified (line 7)")
   })
 
@@ -291,8 +291,9 @@ describe("pointless-usememo message", () => {
 
   it("matches the SPEC example", () => {
     expect(buildMessage(base)).toBe(
-      "useMemo has no effect: constant work, and `label` is only read at line 3; " +
-        "inline the expression and remove the dep array",
+      "This useMemo does nothing. " +
+        "The computation is constant work and `label` is only read at line 3. " +
+        "Inline the expression and remove the dep array.",
     )
   })
 
@@ -310,13 +311,13 @@ describe("pointless-usememo message", () => {
     expect(buildMessage(base)).not.toContain("verify before removing")
 
     expect(buildMessage({ ...base, unresolvedCallees: ["slugify"] })).toContain(
-      "1 callee (slugify) unresolved across files, verify before removing",
+      "`slugify` is defined in another file and was not read. Check what it does before removing.",
     )
     expect(buildMessage({ ...base, unresolvedCallees: ["a", "b"] })).toContain(
-      "2 callees (a, b) unresolved across files",
+      "`a` and `b` are defined in another file and were not read",
     )
     expect(buildMessage({ ...base, usageCount: 5, spreadUsages: 2 })).toContain(
-      "2 of 5 usages unresolved behind a spread, verify before removing",
+      "2 of 5 usages are hidden behind a spread. Verify before removing.",
     )
     // A usage we simply could not place must not be reported as a spread.
     const unclassified = buildMessage({
@@ -326,14 +327,14 @@ describe("pointless-usememo message", () => {
       unclassifiedLines: [7],
     })
     expect(unclassified).toContain(
-      "1 of 3 usages could not be classified (line 7), verify before removing",
+      "1 of 3 usages could not be classified (line 7). Verify before removing.",
     )
     expect(unclassified).not.toContain("behind a spread")
     expect(buildMessage({ ...base, identityMatters: 0.3 })).toContain(
-      "weak identity signal, verify no consumer compares references",
+      "The identity signal is weak. Verify no consumer compares references.",
     )
     // 0.2 and below is noise, not a blind spot.
-    expect(buildMessage({ ...base, identityMatters: 0.2 })).not.toContain("weak identity signal")
+    expect(buildMessage({ ...base, identityMatters: 0.2 })).not.toContain("The identity signal is weak")
   })
 })
 
@@ -377,6 +378,6 @@ describe("no em-dash reaches a message", () => {
   })
 
   it("marks the claim with a colon", () => {
-    expect(buildMessage(PLAIN)).toMatch(/^useMemo has no effect: /)
+    expect(buildMessage(PLAIN)).toMatch(/^This useMemo does nothing. The computation is /)
   })
 })

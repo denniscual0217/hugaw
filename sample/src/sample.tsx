@@ -1,15 +1,51 @@
-import { useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
-function EditableNote({ isEditing }) {
-  const textareaRef = useRef(null);
+function Payment() {
+  const [status, setStatus] = useState("idle");
+
+  const actions = {
+    complete() {
+      chargeCard();
+    },
+  };
 
   useEffect(() => {
-    if (isEditing) {
-      textareaRef.current?.focus();
+    if (status === "ready") {
+      actions.complete();
     }
-  }, [isEditing]);
+  }, [status]);
 
-  return isEditing ? <textarea ref={textareaRef} /> : null;
+  return <button onClick={() => setStatus("ready")}>Pay</button>;
+}
+
+function Profile({ firstName, lastName }) {
+  const [fullName, setFullName] = useState("");
+
+  const updateName = () => {
+    setFullName(`${firstName} ${lastName}`);
+  };
+
+  useEffect(() => {
+    updateName();
+  }, [firstName, lastName]);
+
+  return <div>{fullName}</div>;
+}
+
+function Checkout() {
+  const [shouldSubmit, setShouldSubmit] = useState(false);
+
+  function performSubmission() {
+    if (shouldSubmit) {
+      submitOrder();
+    }
+  }
+
+  useEffect(() => {
+    performSubmission();
+  }, [shouldSubmit]);
+
+  return <button onClick={() => setShouldSubmit(true)}>Submit</button>;
 }
 
 // function Toggle({ onChange }) {

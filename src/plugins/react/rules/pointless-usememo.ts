@@ -170,43 +170,65 @@ function readsClause(binding: string, lines: readonly number[]): string {
 }
 
 /**
- * One dense line including the fix, plus a caveat clause *only* where there is
- * a real blind spot. The message is the product: the consumer is an agent that
- * reads stdout and applies the fix itself.
+ * Short sentences, one idea each: what is wrong, then what to do, then any
+ * blind spot as its own sentence.
+ *
+ * It used to be one clause chain held together by a colon and semicolons,
+ * which reads like a config value rather than like something written for a
+ * person. The message is the product — the consumer is an agent that reads
+ * stdout and applies the fix itself, and a human reads it over their
+ * shoulder — so it is worth the extra words full stops cost.
+ *
+ * A caveat appears *only* where there is a real blind spot, never as
+ * boilerplate.
  */
 export function buildMessage(facts: MemoFacts): string {
   const phrase = COST_PHRASE[facts.costLevel] ?? "inexpensive work"
-  let message =
-    `useMemo has no effect: ${phrase}, and ${readsClause(facts.binding, facts.usageLines)}; ` +
-    `inline the expression and remove the dep array`
+  const sentences: string[] = [
+    "This useMemo does nothing.",
+    `The computation is ${phrase} and ${readsClause(facts.binding, facts.usageLines)}.`,
+    "Inline the expression and remove the dep array.",
+  ]
 
-  const caveats: string[] = []
   if (facts.unresolvedCallees.length > 0) {
-    const n = facts.unresolvedCallees.length
-    caveats.push(
-      `${n} ${n === 1 ? "callee" : "callees"} (${facts.unresolvedCallees.join(", ")}) ` +
-        `unresolved across files, verify before removing`,
+    const names = facts.unresolvedCallees.map((name) => `\`${name}\``)
+    const one = names.length === 1
+    sentences.push(
+      `${sentenceList(names)} ${one ? "is" : "are"} defined in another file and ` +
+        `${one ? "was" : "were"} not read. Check what ${one ? "it does" : "they do"} before removing.`,
     )
   }
   if (facts.spreadUsages > 0) {
-    caveats.push(
-      `${facts.spreadUsages} of ${facts.usageCount} usages unresolved behind a spread, verify before removing`,
+    sentences.push(
+      `${facts.spreadUsages} of ${countNoun(facts.usageCount)} ` +
+        `${facts.spreadUsages === 1 ? "is" : "are"} hidden behind a spread. Verify before removing.`,
     )
   }
   if (facts.unclassifiedUsages > 0) {
     const lines = facts.unclassifiedLines
     const where = lines.length === 0 ? "" : ` (line${lines.length === 1 ? "" : "s"} ${lines.join(", ")})`
-    caveats.push(
-      `${facts.unclassifiedUsages} of ${facts.usageCount} usages could not be classified${where}, verify before removing`,
+    sentences.push(
+      `${facts.unclassifiedUsages} of ${countNoun(facts.usageCount)} could not be ` +
+        `classified${where}. Verify before removing.`,
     )
   }
   if (facts.identityMatters > IDENTITY_CAVEAT_MIN && facts.identityMatters <= IDENTITY_MATTERS_MAX) {
     // No percentage: this clause only exists inside the caveat band, so
     // "weak" is already the whole of what the number would have said.
-    caveats.push("weak identity signal, verify no consumer compares references")
+    sentences.push("The identity signal is weak. Verify no consumer compares references.")
   }
-  for (const caveat of caveats) message += `; ${caveat}`
-  return message
+  return sentences.join(" ")
+}
+
+/** "1 usage" / "3 usages" — the noun agrees with the total, not the count. */
+function countNoun(total: number): string {
+  return `${total} ${total === 1 ? "usage" : "usages"}`
+}
+
+/** `a` · `a and b` · `a, b and c`. */
+function sentenceList(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? ""
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
 }
 
 /* ── slice readers ───────────────────────────────────────────────────────── */
