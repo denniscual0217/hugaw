@@ -1,3 +1,4 @@
+import { Project, SyntaxKind, ts } from "ts-morph"
 import { describe, expect, it } from "vitest"
 import type { Answers, Candidate, JsonValue, Slices, Verdict } from "../../../core/index.js"
 import type { TsTypes } from "../../../adapters/typescript/index.js"
@@ -68,13 +69,41 @@ const BASE_SLICES: Record<string, JsonValue> = {
 
 const DATA: EffectData = { callbackName: null, callbackResolved: true }
 
+/**
+ * A real node for the candidate, because `decide` reads the AST.
+ *
+ * It follows one level into same-file helpers the effect calls, so it needs
+ * something to walk. This source has no helpers, which keeps every table in
+ * this file measuring exactly what its slices say and nothing else — the
+ * indirect path has its own tests and its own fixtures.
+ */
+const NODES = (() => {
+  const project = new Project({
+    useInMemoryFileSystem: true,
+    compilerOptions: { jsx: ts.JsxEmit.Preserve, allowJs: true, strict: false },
+  })
+  const file = project.createSourceFile(
+    "t.tsx",
+    'import { useEffect, useState } from "react"\n' +
+      "export function ProductList({ products }) {\n" +
+      "  const [filtered, setFiltered] = useState([])\n" +
+      "  useEffect(() => { setFiltered(products) }, [products])\n" +
+      "  return null\n" +
+      "}\n",
+  )
+  const call = file
+    .getDescendantsOfKind(SyntaxKind.CallExpression)
+    .find((c) => c.getExpression().getText() === "useEffect")!
+  return { call, unit: file.getFunctionOrThrow("ProductList") }
+})()
+
 function candidateWith(data: EffectData = DATA): Candidate<TsTypes, EffectData> {
   return {
     id: "react/useeffect-alternatives@/t.tsx:6:3",
     ruleId: "react/useeffect-alternatives",
     filePath: "/t.tsx",
-    node: null as never,
-    unit: null as never,
+    node: NODES.call,
+    unit: NODES.unit,
     unitKey: "/t.tsx#0",
     loc: { line: 6, column: 3, endLine: 8, endColumn: 4 },
     nodeType: "CallExpression",
@@ -106,6 +135,7 @@ function decide(
   return useEffectAlternatives.decide(answers, {
     candidate: candidateWith(options.data),
     slices: { ...BASE_SLICES, ...options.slices } as Slices,
+    options: {},
   })
 }
 

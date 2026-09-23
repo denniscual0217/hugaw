@@ -1,11 +1,21 @@
 import { SyntaxKind } from "ts-morph"
+import type { CallExpression } from "ts-morph"
 import { defineRule } from "../../../core/index.js"
-import type { JsonValue, Selection, Slices } from "../../../core/index.js"
-import type { TsTypes } from "../../../adapters/typescript/index.js"
+import { interpolate } from "../../../core/index.js"
+import type { JsonValue, OptionsReview, RuleOptions, Selection, Slices } from "../../../core/index.js"
+import type { FunctionLike, TsTypes } from "../../../adapters/typescript/index.js"
 import { effectCallbackOf } from "../analysis/effects.js"
+import { indirectCallsOf } from "../analysis/indirect.js"
+import type { IndirectCall } from "../analysis/indirect.js"
 import { isReactApi } from "../analysis/react-imports.js"
 import type { EffectData } from "./effect-data.js"
-import { KEEP_FAMILY, REPLACEMENTS, effectQuestions } from "./effect-questions.js"
+import {
+  KEEP_FAMILY,
+  REPLACEMENTS,
+  effectQuestions,
+  effectQuestionsWith,
+  fixOverridesOf,
+} from "./effect-questions.js"
 import type { Replacement } from "./effect-questions.js"
 
 /* ── thresholds (measured live — see docs/internals.md) ─────────────────── */
@@ -60,6 +70,7 @@ export type EffectFacts = {
   choiceConfidence: number
   /** The whole distribution, carried so later ablations are free. */
   probabilities: Record<string, number>
+  /** Every state this effect writes, directly or through a helper we read. */
   statesWritten: string[]
   setterInputs: string[]
   /**
@@ -73,7 +84,14 @@ export type EffectFacts = {
   /** The hook such a write came out of, when it came from one at all. */
   unresolvedWriteHook: string | null
   propCallbacksCalled: string[]
+  /** Calls in the effect body itself. A helper's own calls live in `indirect`. */
   outwardCalls: string[]
+  /**
+   * What each same-file helper the effect calls was found to do, one level
+   * deep. The message reads this to say *which* helper did what, rather than
+   * flattening everything into one undifferentiated list.
+   */
+  indirect: IndirectCall[]
   externals: string[]
   unresolvedCallees: string[]
   readsOutsideDeps: string[]
@@ -203,6 +221,55 @@ function describeWritten(facts: EffectFacts, whenKnown: string, whenUnknown: str
   return facts.statesWritten.length > 0 ? whenKnown : whenUnknown
 }
 
+/**
+ * Placeholders a config-supplied `fix` may use, on top of every fact name.
+ *
+ * They exist because the built-in phrases are functions of `facts`, not
+ * strings: `describeWritten` is what degrades "delete the state and the
+ * effect" to "delete the effect" when no write was confirmed. A flat string
+ * would throw that away, so the string gets the same knowledge through names
+ * that can fail to resolve.
+ */
+function placeholdersOf(facts: EffectFacts): Record<string, string> {
+  const named: Record<string, string> = { owner: facts.owner }
+  const state = facts.statesWritten[0]
+  if (state !== undefined) named["state"] = `the \`${state}\` state`
+  const firstDep = facts.deps[0]
+  if (firstDep !== undefined) named["dep"] = `\`${firstDep}\``
+  const callback = facts.propCallbacksCalled[0]
+  if (callback !== undefined) named["callback"] = `\`${callback}\``
+  const external = facts.externals[0]
+  if (external !== undefined) named["external"] = `\`${external}\``
+  return named
+}
+
+const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g
+
+/**
+ * A config `fix`, with its placeholders resolved.
+ *
+ * A clause whose placeholder cannot resolve is **dropped**, not printed with
+ * a hole or an empty string — the same degrade the built-in phrases perform,
+ * and the same rule that the message may not assert more than was observed.
+ * Clauses are comma-separated. If every clause drops, the caller falls back
+ * to the built-in phrase, because a finding without a fix is not a finding.
+ */
+export function applyFixTemplate(template: string, facts: EffectFacts): string | null {
+  const named = placeholdersOf(facts)
+  const kept = template
+    .split(",")
+    .map((clause) => clause.trim())
+    .filter((clause) => {
+      for (const match of clause.matchAll(PLACEHOLDER)) {
+        const key = match[1] as string
+        if (!Object.hasOwn(named, key) && !Object.hasOwn(facts, key)) return false
+      }
+      return true
+    })
+  if (kept.length === 0) return null
+  return interpolate(kept.join(", "), { ...facts, ...named })
+}
+
 function dep(facts: EffectFacts): string {
   return facts.deps[0] ?? "that value"
 }
@@ -228,13 +295,65 @@ function stateName(facts: EffectFacts): string | null {
 }
 
 function list(items: readonly string[]): string {
-  const shown = items.slice(0, 3).map((item) => `\`${item}\``)
-  const rest = items.length - shown.length
-  const joined =
-    shown.length <= 1
-      ? (shown[0] ?? "")
-      : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`
+  return joinCapped(items.map((item) => `\`${item}\``))
+}
+
+/** Joins at most three already-rendered clauses, counting the rest. */
+function joinCapped(parts: readonly string[]): string {
+  const shown = parts.slice(0, 3)
+  const rest = parts.length - shown.length
+  const joined = sentenceList(shown)
   return rest > 0 ? `${joined} and ${rest} more` : joined
+}
+
+/** What the effect reached only by calling a helper, for subtraction. */
+function indirectSets(facts: EffectFacts): {
+  states: Set<string>
+  externals: Set<string>
+  propCallbacks: Set<string>
+} {
+  const states = new Set<string>()
+  const externals = new Set<string>()
+  const propCallbacks = new Set<string>()
+  for (const entry of facts.indirect) {
+    for (const name of entry.states) states.add(name)
+    for (const name of entry.externals) externals.add(name)
+    for (const name of entry.propCallbacks) propCallbacks.add(name)
+  }
+  return { states, externals, propCallbacks }
+}
+
+/**
+ * Each call in the effect body, with what the helper behind it does.
+ *
+ * `calls \`evaluateCount(count)\`, which sets \`finished\`` — the whole point
+ * of the exercise. A helper we could not read gets no clause at all, which is
+ * the same rule as everywhere else: the sentence may not assert more than was
+ * observed.
+ */
+function describeCalls(facts: EffectFacts): string[] {
+  const behind = new Map(facts.indirect.map((entry) => [entry.callee, entry]))
+  return facts.outwardCalls.map((call) => {
+    const name = call.slice(0, call.indexOf("("))
+    const entry = behind.get(name)
+    if (entry === undefined) return `\`${call}\``
+    // One clause, not a list. This sits inside a sentence that is already an
+    // "a, b and c" list, and a nested list of its own leaves the reader
+    // unable to tell which "and" belongs to which. The order is what a reader
+    // needs first: what it writes, who it tells, what it touches, what it
+    // calls.
+    const inner =
+      entry.states.length > 0
+        ? `sets ${list(entry.states.slice(0, 2))}`
+        : entry.propCallbacks.length > 0
+          ? `calls ${list(entry.propCallbacks.slice(0, 2))}`
+          : entry.externals.length > 0
+            ? `touches ${list(entry.externals.slice(0, 2))}`
+            : entry.outwardCalls.length > 0
+              ? `calls ${list(entry.outwardCalls.slice(0, 2))}`
+              : null
+    return inner === null ? `\`${call}\`` : `\`${call}\`, which ${inner}`
+  })
 }
 
 /**
@@ -247,8 +366,13 @@ function list(items: readonly string[]): string {
  */
 export function observationOf(facts: EffectFacts): string {
   const parts: string[] = []
-  if (facts.externals.length > 0) parts.push(`touches ${list(facts.externals)}`)
-  if (facts.outwardCalls.length > 0) parts.push(`calls ${list(facts.outwardCalls)}`)
+  // Externals a helper touches are named inside that helper's clause instead,
+  // so the sentence says *where* the contact happens rather than listing it
+  // twice with no indication of which call reached it.
+  const indirectly = indirectSets(facts)
+  const directExternals = facts.externals.filter((name) => !indirectly.externals.has(name))
+  if (directExternals.length > 0) parts.push(`touches ${list(directExternals)}`)
+  if (facts.outwardCalls.length > 0) parts.push(`calls ${joinCapped(describeCalls(facts))}`)
   // A write we could not confirm is state is still a write we watched happen.
   // Phrased as the call it is, so the sentence stays true even when
   // `component_state` came back empty.
@@ -265,24 +389,46 @@ export function observationOf(facts: EffectFacts): string {
   // is safe. If the effect touches anything outside React as well, "only"
   // would be the message asserting more than it observed.
   const nothingElse = parts.length === 0
-  if (facts.statesWritten.length > 0) {
+  const directStates = facts.statesWritten.filter((name) => !indirectly.states.has(name))
+  if (directStates.length > 0) {
     const sets =
       facts.setterInputs.length > 0
-        ? `sets ${list(facts.statesWritten)} from ${list(facts.setterInputs)}`
-        : `sets ${list(facts.statesWritten)}`
+        ? `sets ${list(directStates)} from ${list(facts.setterInputs)}`
+        : `sets ${list(directStates)}`
     parts.push(nothingElse ? `only ${sets}` : sets)
   }
   if (parts.length === 0) return "This rule cannot describe what this effect does."
-  return `This effect ${sentenceList(parts)}.`
+  // A part carrying its own "which …" clause already contains an "and", so
+  // the outer list takes a serial comma. Without it, "calls `subscribe(…)`,
+  // which touches A and B and sets C" leaves the reader unable to tell
+  // whether the effect or the helper sets C.
+  const nested = parts.some((part) => part.includes(", which "))
+  return `This effect ${sentenceList(parts, nested)}.`
 }
 
 /** `a` · `a and b` · `a, b and c` — for clauses, where `list()` joins values. */
-function sentenceList(parts: readonly string[]): string {
+function sentenceList(parts: readonly string[], serialComma = false): string {
   if (parts.length <= 1) return parts[0] ?? ""
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
+  const separator = serialComma ? ", and " : " and "
+  return `${parts.slice(0, -1).join(", ")}${separator}${parts[parts.length - 1]}`
 }
 
 /** Upper-cases the first letter, so a fix fragment can open a sentence. */
+/** A project's fix for this label if it resolves, else the built-in one. */
+function fixFor(
+  facts: EffectFacts,
+  label: string,
+  aside: boolean,
+  fixes: Record<string, string>,
+): string | undefined {
+  const override = fixes[label]
+  if (override !== undefined) {
+    const resolved = applyFixTemplate(override, facts)
+    if (resolved !== null) return resolved
+  }
+  return FIX_PHRASE[label]?.(facts, aside)
+}
+
 function capitalise(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
@@ -337,10 +483,10 @@ const DROP_ORDER: readonly Budgeted[] = [
   { aside: false, keepCaveat: false, alternative: false },
 ]
 
-export function buildMessage(facts: EffectFacts): string {
+export function buildMessage(facts: EffectFacts, fixes: Record<string, string> = {}): string {
   let message = ""
   for (const budget of DROP_ORDER) {
-    message = assemble(facts, budget)
+    message = assemble(facts, budget, fixes)
     if (wordCount(message) <= WORD_BUDGET) return message
   }
   // Everything expendable is gone and it is still long: what is left is
@@ -348,9 +494,10 @@ export function buildMessage(facts: EffectFacts): string {
   return message
 }
 
-function assemble(facts: EffectFacts, budget: Budgeted): string {
+function assemble(facts: EffectFacts, budget: Budgeted, fixes: Record<string, string> = {}): string {
   const fix =
-    FIX_PHRASE[facts.replacement]?.(facts, budget.aside) ?? "replace it with the primitive that fits"
+    fixFor(facts, facts.replacement, budget.aside, fixes) ??
+    "replace it with the primitive that fits"
   const sentences: string[] = [observationOf(facts), `${capitalise(fix)}.`]
 
   const alternative =
@@ -362,7 +509,7 @@ function assemble(facts: EffectFacts, budget: Budgeted): string {
       ? // The alternative never carries the aside: it is already the clause
         // most likely to be dropped, and a parenthetical inside it would be
         // the first thing to go anyway.
-        FIX_PHRASE[facts.runnerUp]?.(facts, false)
+        fixFor(facts, facts.runnerUp, false, fixes)
       : null
   if (alternative) sentences.push(`Or ${alternative}.`)
 
@@ -546,11 +693,63 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
     return selections
   },
 
-  ask() {
-    return effectQuestions
+  /**
+   * A project may replace any option's criterion, and its fix phrase with it.
+   * Only labels that already exist: a new one would need a fix phrase config
+   * cannot supply, and would land in a Choice whose gate was measured against
+   * the built-in set.
+   */
+  reviewOptions(options: RuleOptions): OptionsReview {
+    const overrides = options.extends?.replacements
+    if (overrides === undefined) return { errors: [] }
+
+    const errors: string[] = []
+    const known = Object.keys(REPLACEMENTS)
+    const criteria: string[] = []
+    const fixes: string[] = []
+    for (const [label, override] of Object.entries(overrides)) {
+      if (!known.includes(label)) {
+        errors.push(
+          `extends.replacements: "${label}" is not a replacement of this rule. ` +
+            `Valid labels: ${known.join(", ")}.`,
+        )
+        continue
+      }
+      const criterion = typeof override === "string" ? override : override.criterion
+      const fix = typeof override === "string" ? undefined : override.fix
+      if (criterion !== undefined) criteria.push(label)
+      if (fix !== undefined) {
+        fixes.push(label)
+        // The same punctuation the built-in messages follow: the output is a
+        // terminal, where a dash doing three jobs reads as three minus signs.
+        if (fix.includes("\u2014")) {
+          errors.push(`extends.replacements.${label}.fix: use ( … ) or a comma, not an em-dash.`)
+        }
+      }
+    }
+    if (errors.length > 0) return { errors }
+    if (criteria.length === 0 && fixes.length === 0) return { errors: [] }
+
+    const parts: string[] = []
+    if (criteria.length > 0) {
+      parts.push(`${criteria.length} criteri${criteria.length === 1 ? "on" : "a"} (${criteria.join(", ")})`)
+    }
+    if (fixes.length > 0) parts.push(`${fixes.length} fix${fixes.length === 1 ? "" : "es"} (${fixes.join(", ")})`)
+    return {
+      errors: [],
+      // Worth saying out loud: a fourteenth option moved one case's clearance
+      // by 0.15, so changed criteria can move the gate without anyone noticing.
+      notice:
+        `react/useeffect-alternatives: overriding ${parts.join(" and ")} from config; ` +
+        "thresholds were measured against the built-in set",
+    }
   },
 
-  decide(answers, { candidate, slices }) {
+  ask({ options }) {
+    return effectQuestionsWith(options.extends?.replacements)
+  },
+
+  decide(answers, { candidate, slices, options }) {
     const { choice, confidence, probabilities } = answers.replacement
     const summary = summariseChoice(probabilities, choice)
 
@@ -577,6 +776,11 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
     const handedOver = [...names.keys()].filter((setter) =>
       rows.some((row) => mentions(row.arguments, setter)),
     )
+    // One level through each same-file helper the effect calls. The payload
+    // already inlines those bodies, so this adds no request and needs no
+    // re-ablation; it only stops the sentence from hiding what the model was
+    // given.
+    const indirect = indirectCallsOf(candidate.node as CallExpression, candidate.unit as FunctionLike)
     const facts: EffectFacts = {
       owner: typeof owner["name"] === "string" ? owner["name"] : "<anonymous>",
       ownerKind: typeof owner["kind"] === "string" ? owner["kind"] : "other",
@@ -590,24 +794,33 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
       runnerUpMass: summary.runnerUpMass,
       choiceConfidence: confidence,
       probabilities: { ...probabilities },
-      statesWritten: unique(
-        [...setterCalls.map((row) => row.callee), ...handedOver].map(
+      statesWritten: unique([
+        ...[...setterCalls.map((row) => row.callee), ...handedOver].map(
           (setter) => names.get(setter) ?? setter,
         ),
-      ),
+        // A fix phrase that says "delete the state" has to know about state
+        // written through a helper too, or it under-claims on exactly the
+        // case this indirection exists for.
+        ...indirect.flatMap((entry) => entry.states),
+      ]),
       setterInputs: unique(setterCalls.flatMap((row) => row.inputs)),
       unresolvedWrites: unique(unconfirmed.map((row) => row.callee)),
       unresolvedWriteInputs: unique(unconfirmed.flatMap((row) => row.inputs)),
       unresolvedWriteHook: unconfirmed.find((row) => row.via !== null)?.via ?? null,
-      propCallbacksCalled: unique(
-        rows.filter((row) => row.kind === "prop-callback").map((row) => row.callee),
-      ),
+      propCallbacksCalled: unique([
+        ...rows.filter((row) => row.kind === "prop-callback").map((row) => row.callee),
+        ...indirect.flatMap((entry) => entry.propCallbacks),
+      ]),
       outwardCalls: unique(
         rows
           .filter((row) => NAMEABLE_KINDS.has(row.kind) && !WRITE_NAME.test(row.callee))
           .map((row) => `${row.callee}(${row.arguments})`),
       ),
-      externals: strings(object(slices["effect_body"])["externals"]),
+      externals: unique([
+        ...strings(object(slices["effect_body"])["externals"]),
+        ...indirect.flatMap((entry) => entry.externals),
+      ]),
+      indirect,
       unresolvedCallees: strings(object(slices["effect_body"])["unresolved"]),
       readsOutsideDeps: strings(effectCall["readsOutsideDeps"]),
       callbackName: candidate.data.callbackName,
@@ -631,7 +844,11 @@ export const useEffectAlternatives = defineRule<TsTypes, EffectData, EffectQuest
     // distribution nobody has measured, and this rule deletes code.
     if (KEEP_FAMILY.has(summary.mode)) return null
 
-    return { messageId: "replaceEffect", message: buildMessage(facts), facts }
+    return {
+      messageId: "replaceEffect",
+      message: buildMessage(facts, fixOverridesOf(options.extends?.replacements)),
+      facts,
+    }
   },
 })
 

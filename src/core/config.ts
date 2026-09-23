@@ -20,6 +20,24 @@ const ruleOptionsSchema = z.object({
   messageSuffix: z.string().optional(),
   /** Free-text project context for this rule; reaches the model as `context`. */
   context: z.string().optional(),
+  /**
+   * Rule-specific extension points. Validated structurally here and for
+   * meaning by the rule's own `reviewOptions`, which knows what the labels
+   * are and core does not.
+   */
+  extends: z
+    .object({
+      replacements: z
+        .record(
+          z.string(),
+          z.union([
+            z.string(),
+            z.object({ criterion: z.string().optional(), fix: z.string().optional() }),
+          ]),
+        )
+        .optional(),
+    })
+    .optional(),
 })
 
 const ruleSettingSchema = z.union([severitySchema, z.tuple([severitySchema, ruleOptionsSchema])])

@@ -260,6 +260,47 @@ exceeded), `"error"` findings exit 1.
 Thresholds are not configurable. They are module constants in each rule file, set from live
 measurements recorded in the [Calibration](internals.md#calibration) section of `internals.md`.
 
+### Overriding a rule's criteria
+
+The effect rule's outcomes are a fixed list, but the *text* describing each one can be
+replaced per project. This is how you teach it your codebase's vocabulary — that every query
+has a generated hook, that your store is not Redux — without forking the rule.
+
+```ts
+"react/useeffect-alternatives": ["error", {
+  extends: {
+    replacements: {
+      // a string replaces the criterion and keeps the built-in fix phrase
+      external_store: "Replace the state and the effect with `useSyncExternalStore`. …",
+
+      // the object form replaces both
+      data_library: {
+        criterion: "Replace the effect and the state it fills with this codebase's generated `useXQuery` hook. …",
+        fix: "replace the effect with the generated `useXQuery` hook, and delete {state}",
+      },
+    },
+  },
+}]
+```
+
+**Override the fix whenever you override the criterion.** A criterion that talks about your
+generated hooks, paired with the built-in fix that says "the project's data-fetching hook",
+means the model read one thing and the reader is told another. That is what the object form
+is for.
+
+A `fix` takes the same `{placeholder}` names as `message`: any fact, plus `{state}`, `{dep}`,
+`{callback}`, `{external}` and `{owner}`. **A clause whose placeholder cannot resolve is
+dropped**, rather than printed as a hole or an empty string — `"use the hook, and delete
+{state}"` becomes `"use the hook"` on a finding where no state write was confirmed. If every
+clause drops, the built-in phrase is used instead, because a finding without a fix is not a
+finding. Config fixes go through the same length budget and punctuation rules as the built-in
+ones, and an em-dash is rejected at load.
+
+Only labels that already exist can be overridden; a typo fails at load with the config path
+and the list of valid labels. A successful override prints a notice on stderr naming what
+changed, because the thresholds were measured against the built-in criteria and changing them
+can move the gate.
+
 ## The rules
 
 ### `react/pointless-usememo`

@@ -97,6 +97,7 @@ function decide(cost: number, confidence: number, identity: number): Verdict<Mem
   return pointlessUseMemo.decide(answers(cost, confidence, identity), {
     candidate: candidate(),
     slices: slices(),
+    options: {},
   })
 }
 
@@ -131,6 +132,7 @@ describe("pointless-usememo decide() thresholds", () => {
     const verdict = pointlessUseMemo.decide(answers(0.1, 0.9, 0.05), {
       candidate: candidate(),
       slices: mixedSlices(),
+      options: {},
     })
     expect(verdict?.facts.usageCount).toBe(3)
     expect(verdict?.facts.spreadUsages).toBe(1)
@@ -144,6 +146,7 @@ describe("pointless-usememo decide() thresholds", () => {
     const verdict = pointlessUseMemo.decide(answers(0.1, 0.9, 0.05), {
       candidate: candidate("price"),
       slices: slices([4, 9, 9], ["slugify"]),
+      options: {},
     })
     expect(verdict?.facts).toEqual({
       binding: "price",
@@ -173,6 +176,7 @@ describe("pointless-usememo — the unbounded-work gates", () => {
     pointlessUseMemo.decide(answers(1.1, 0.9, 0.05, unboundedMass(mass)), {
       candidate: candidate("label", skippedRenders),
       slices: slices(),
+      options: {},
     })
 
   it("suppresses on mass alone, whether or not renders skip work", () => {
@@ -212,6 +216,7 @@ describe("pointless-usememo — the unbounded-work gates", () => {
       pointlessUseMemo.decide(answers(1.1, 0.9, 0.05), {
         candidate: candidate("label", true),
         slices: slices(),
+        options: {},
       }),
     ).not.toBeNull()
   })
@@ -259,6 +264,7 @@ describe("costMode — the phrase follows the mass, not the rounded score", () =
       const verdict = pointlessUseMemo.decide(answers(1.0, 0.9, 0.05, probabilities), {
         candidate: candidate(),
         slices: slices(),
+        options: {},
       })
       if (verdict === null) continue
       expect(verdict.message, JSON.stringify(probabilities)).not.toContain("fixed right here")

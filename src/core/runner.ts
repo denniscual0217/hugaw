@@ -428,7 +428,11 @@ export async function runLint(input: RunInput): Promise<RunReport> {
             const slices = perRuleSlices.get(enabled.ruleId) ?? {}
             let asked: Record<string, Question>
             try {
-              asked = enabled.rule.ask({ candidate, slices }) as Record<string, Question>
+              asked = enabled.rule.ask({
+                candidate,
+                slices,
+                options: enabled.options,
+              }) as Record<string, Question>
             } catch (error) {
               errors.push({
                 message: `ask() threw: ${errorMessage(error)}`,
@@ -567,7 +571,11 @@ export async function runLint(input: RunInput): Promise<RunReport> {
 
             let verdict: { messageId: string; message: string; facts: Record<string, JsonValue> } | null
             try {
-              verdict = enabled.rule.decide(own as any, { candidate, slices })
+              verdict = enabled.rule.decide(own as any, {
+                candidate,
+                slices,
+                options: enabled.options,
+              })
             } catch (error) {
               errors.push({
                 message: `decide() threw: ${errorMessage(error)}`,

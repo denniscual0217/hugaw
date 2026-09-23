@@ -1,7 +1,7 @@
 import pc from "picocolors"
 import { ZodError } from "zod"
 import type { Cache, Judge, LanguageAdapter, RunReport } from "../core/index.js"
-import { configSchema, noopCache, runLint, truncateFindings } from "../core/index.js"
+import { configSchema, noopCache, resolveRules, runLint, truncateFindings } from "../core/index.js"
 import { dryRun } from "../format/dry-run.js"
 import { externalFormatter, FormatterNotInstalledError } from "../format/external.js"
 import { findingsMetadata, json, jsonWithMetadata } from "../format/json.js"
@@ -76,6 +76,24 @@ export async function run(flags: CliFlags, io: Io = defaultIo()): Promise<number
     }
     return 2
   }
+
+  // Rule-specific options are checked here, at load, so a typo fails with the
+  // config in hand rather than halfway through a paid run. A rule that lets a
+  // project extend it is the only thing that knows what is valid.
+  const notices: string[] = []
+  const optionErrors: string[] = []
+  for (const enabled of resolveRules(config, flags.rule)) {
+    const review = enabled.rule.reviewOptions?.(enabled.options)
+    if (review === undefined) continue
+    for (const error of review.errors) optionErrors.push(`${enabled.ruleId}: ${error}`)
+    if (review.notice !== undefined) notices.push(review.notice)
+  }
+  if (optionErrors.length > 0) {
+    io.err(colors.red(`Invalid rule options${configPath === null ? "" : ` in ${configPath}`}:`))
+    for (const error of optionErrors) io.err(colors.red(`  ${error}`))
+    return 2
+  }
+  for (const notice of notices) io.err(colors.yellow(notice))
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous adapters
   const adapters: readonly LanguageAdapter<any, any>[] = config.adapters ?? defaultAdapters

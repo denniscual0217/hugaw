@@ -504,6 +504,34 @@ describe("react/useeffect-alternatives — should-warn", () => {
     expect(report.findings.map((f) => f.loc.line)).toEqual([19, 23])
   })
 
+  it("setter-through-helper.tsx names the state the helper writes", async () => {
+    // The reported case. The verdict was always right — 96% of the mass on
+    // the two "this effect sets state" outcomes — but the sentence named
+    // only the call, so it read as though we had missed the write.
+    const { judge } = createMockJudge(replacing("collapse_to_handler"))
+    const report = await runFixture("should-warn/setter-through-helper.tsx", {
+      judge,
+      rule: EFFECT_RULE,
+    })
+
+    expect(report.errors).toEqual([])
+    expect(report.findings.length).toBe(1)
+    const finding = report.findings[0]!
+    expect(finding.message).toContain("calls `evaluateCount(count)`, which sets `finished`")
+    // The fix has to know about it too, or it under-claims on the very case
+    // the indirection exists for.
+    expect(finding.facts["statesWritten"]).toEqual(["finished"])
+    expect(finding.facts["indirect"]).toEqual([
+      {
+        callee: "evaluateCount",
+        states: ["finished"],
+        propCallbacks: [],
+        outwardCalls: [],
+        externals: [],
+      },
+    ])
+  })
+
   it("fetch-cross-file.tsx caveats the callee it could not read", async () => {
     const { judge } = createMockJudge(replacing("data_library"))
     const report = await runFixture("should-warn/fetch-cross-file.tsx", {

@@ -233,6 +233,12 @@ function isRefCurrentRead(identifier: Identifier): boolean {
   )
 }
 
+/** True when the identifier is the thing being called, as in `go()`. */
+function isCallee(identifier: Identifier): boolean {
+  const parent = identifier.getParent()
+  return Node.isCallExpression(parent) && parent.getExpression() === identifier
+}
+
 function isPropertyName(identifier: Identifier): boolean {
   const parent = identifier.getParent()
   if (Node.isPropertyAccessExpression(parent) && parent.getNameNode() === identifier) return true
@@ -268,6 +274,10 @@ export function readsOutsideDeps(
   const names = new Set<string>()
   for (const identifier of callback.getDescendantsOfKind(SyntaxKind.Identifier)) {
     if (isPropertyName(identifier)) continue
+    // The function being called is not a value the effect reacts to. Counting
+    // it produced `key={mountEditor}` on a mount finding, which is advice
+    // about a helper rather than about the data the effect depends on.
+    if (isCallee(identifier)) continue
     const name = identifier.getText()
     if (roots.has(name) || names.has(name)) continue
 

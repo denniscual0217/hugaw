@@ -1,4 +1,5 @@
 import { choice } from "../../../core/index.js";
+import type { ReplacementOverride } from "../../../core/index.js";
 
 /**
  * The paid half of rule #2, kept in its own module so the live ablation can
@@ -114,3 +115,48 @@ export const effectQuestions = {
 };
 
 export type EffectQuestions = typeof effectQuestions;
+
+/**
+ * The criteria with a project's overrides merged in.
+ *
+ * A merge one layer before `choice()`, so nothing about the wire changes: the
+ * request still carries one string per label, and a run with no `extends`
+ * block builds the identical object.
+ *
+ * Only labels that already exist can be overridden. A new label would need a
+ * fix phrase, which config cannot supply, and would land in a Choice whose
+ * thresholds were measured against the built-in set.
+ */
+export function replacementsWith(
+  overrides: Readonly<Record<string, ReplacementOverride>> | undefined,
+): Record<string, string> {
+  const merged: Record<string, string> = { ...REPLACEMENTS };
+  if (overrides === undefined) return merged;
+  for (const [label, override] of Object.entries(overrides)) {
+    if (!Object.hasOwn(merged, label)) continue;
+    const criterion = typeof override === "string" ? override : override.criterion;
+    if (criterion !== undefined) merged[label] = criterion;
+  }
+  return merged;
+}
+
+/** The fix phrase a project supplied for a label, if any. */
+export function fixOverridesOf(
+  overrides: Readonly<Record<string, ReplacementOverride>> | undefined,
+): Record<string, string> {
+  const fixes: Record<string, string> = {};
+  if (overrides === undefined) return fixes;
+  for (const [label, override] of Object.entries(overrides)) {
+    if (typeof override !== "string" && override.fix !== undefined) fixes[label] = override.fix;
+  }
+  return fixes;
+}
+
+export function effectQuestionsWith(
+  overrides: Readonly<Record<string, ReplacementOverride>> | undefined,
+): EffectQuestions {
+  if (overrides === undefined || Object.keys(overrides).length === 0) return effectQuestions;
+  return {
+    replacement: choice(replacement.instructions, replacementsWith(overrides)),
+  } as EffectQuestions;
+}

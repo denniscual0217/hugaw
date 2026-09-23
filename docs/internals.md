@@ -708,9 +708,18 @@ Each is a single string, ordered so the null hypothesis (`keep_effect`) anchors 
    (a value seeded from the source, or a clear to a constant), and both criteria say so, from
    their own side. The shared shape of `writes` does not separate them, so the argument of the
    effect's write has to.
-4. **If it keeps the effect, add it to `KEEP_FAMILY`.** That is what the gate sums. An option
+4. **A project can replace the text, but not the list.** `extends.replacements` in config
+   merges over `REPLACEMENTS` one layer before `choice()` is called, so nothing about the
+   wire changes. It cannot add a label: a new one needs a `FIX_PHRASE` entry, which config
+   cannot supply, and would land in a Choice whose gate was measured against this set. The
+   rule's `reviewOptions` hook checks that at load. A config `fix` is a template rather than
+   a plain string for the same reason the built-ins are functions of `facts` — see the
+   message builder's first rule.
+5. **If it keeps the effect, add it to `KEEP_FAMILY`.** That is what the gate sums. An option
    in the keep family also needs its own message path, as `mount_effect` has, or it can never
    be reported at all.
+6. **Re-run the ablation.** Adding an option redistributes mass across every case; the last
+   two additions moved one case's clearance by 0.15 and flipped another's mode.
 5. **Add a `FIX_PHRASE` entry.** Without one the message falls back to "replace it with the
    primitive that fits", and the option can never print as a runner-up alternative either.
 6. **Re-measure all 17 cases**, and check case 12 first:

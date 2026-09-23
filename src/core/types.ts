@@ -98,6 +98,24 @@ export type Facts = Readonly<Record<string, JsonValue>>
 export type Severity = "off" | "warn" | "error"
 export type NumericSeverity = 1 | 2
 
+/**
+ * A per-label override of a rule's `choice` criteria.
+ *
+ * A bare string replaces the criterion and keeps the built-in fix phrase. The
+ * object form exists because that combination is a trap: change the criterion
+ * to describe your own generated query hooks and the model will pick the
+ * label for your reasons, while the message still prints the built-in fix and
+ * tells the reader something else. `fix` is how you keep the two in step.
+ */
+export type ReplacementOverride = string | { readonly criterion?: string; readonly fix?: string }
+
+/** What a rule makes of its own config, checked once at load. */
+export interface OptionsReview {
+  readonly errors: readonly string[]
+  /** Printed to stderr on a successful load. */
+  readonly notice?: string
+}
+
 export interface RuleOptions<F extends Facts = Facts> {
   readonly message?: string | ((facts: F) => string)
   readonly messageSuffix?: string
@@ -110,6 +128,13 @@ export interface RuleOptions<F extends Facts = Facts> {
    * slice names. This one is a config author's prose; they never meet.
    */
   readonly context?: string
+  /**
+   * Rule-specific extension points. Core carries this through untouched and
+   * never reads it; the rule validates it through `reviewOptions`.
+   */
+  readonly extends?: {
+    readonly replacements?: Readonly<Record<string, ReplacementOverride>>
+  }
 }
 
 export interface RuleMeta {
@@ -126,6 +151,12 @@ export interface RuleContext<T extends LanguageTypes> {
 export interface AskInput<T extends LanguageTypes, D> {
   readonly candidate: Candidate<T, D>
   readonly slices: Slices
+  /**
+   * This rule's resolved config. `ask` needs it because a rule may let a
+   * project extend the question it asks, and `decide` needs it because a
+   * message built from an extended question has to match what was asked.
+   */
+  readonly options: RuleOptions
 }
 
 export type DecideInput<T extends LanguageTypes, D> = AskInput<T, D>
@@ -159,6 +190,11 @@ export interface Rule<
    * model judge it and put the reasoning in a slice instead.
    */
   skip?(candidate: Candidate<T, D>, ctx: RuleContext<T>): string | null
+  /**
+   * Optional: check this rule's own options at config load, so a typo fails
+   * with the config path rather than halfway through a paid run.
+   */
+  reviewOptions?(options: RuleOptions): OptionsReview
   ask(input: AskInput<T, D>): Q
   decide(answers: Answers<Q>, input: DecideInput<T, D>): Verdict<F> | null
 }

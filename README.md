@@ -35,12 +35,12 @@ hugaw "src/**/*.tsx" --dry-run     # quote the glob: hugaw expands it, not the s
 Then run it for real:
 
 ```
-$ hugaw fixtures/pointless-usememo/should-warn/constant-object.tsx
-fixtures/pointless-usememo/should-warn/constant-object.tsx
-  8:17  warning  This useMemo does nothing. The computation is constant work and `label` is only read at line 9. Inline the expression and remove the dep array.  react/pointless-usememo
+$ hugaw fixtures/useeffect-alternatives/should-warn/derived-state.tsx
+fixtures/useeffect-alternatives/should-warn/derived-state.tsx
+  6:3  error  This effect only sets `filtered` from `products`. Compute it during render (use `useMemo` if the work is expensive) and delete the state and the effect.  react/useeffect-alternatives
 
-✖ 1 problem (0 errors, 1 warning)
-1 candidates, 0 skipped statically, 1 judged · 853 tokens · <$0.0001 @ $0.042/M
+✖ 1 problem (1 error, 0 warnings)
+1 candidates, 0 skipped statically, 1 judged · 4.4k tokens · $0.0002 @ $0.042/M
 ```
 
 Every run reports what it spent. Output is ESLint-compatible: `--format json` is ESLint's
@@ -49,31 +49,10 @@ CI output, and what to do when a finding looks wrong.
 
 ## The rules
 
-**`react/pointless-usememo`** reports a `useMemo` whose computation is cheap *and* whose value
-no consumer compares by reference. Both halves need context a static rule does not have: the
-cost depends on what the called function does, and the identity question depends on where the
-value ends up.
-
-That is the finding above; this is the whole file it came from. `format` is resolved and
-inlined into the request, which is how the model tells constant work from a nested loop:
-
-```tsx
-import { useMemo } from "react"
-
-function format(amount, currency) {
-  return `${currency}${amount.toFixed(2)}`
-}
-
-export function Price({ amount, currency }) {
-  const label = useMemo(() => ({ text: format(amount, currency) }), [amount, currency])
-  return <span className="price">{label.text}</span>
-}
-```
-
 **`react/useeffect-alternatives`** reports a `useEffect` that a React primitive would do
 better — derived state, an event handler, a `key`, `useSyncExternalStore`, a data-fetching
-hook, a ref callback, module scope — and stays quiet when the effect is genuine
-synchronisation.
+hook, a ref callback, module scope — and names which one. It stays quiet when the effect is
+genuine synchronisation; it will not tell you to delete a WebSocket subscription.
 
 ```tsx
 // fixtures/useeffect-alternatives/should-warn/derived-state.tsx
@@ -86,9 +65,35 @@ useEffect(() => {
   6:3  error  This effect only sets `filtered` from `products`. Compute it during render (use `useMemo` if the work is expensive) and delete the state and the effect.  react/useeffect-alternatives
 ```
 
-It will not tell you to delete a WebSocket subscription. Which outcomes it can report, and the
-measurements behind every threshold, are in
+When the write happens inside a local helper, the finding follows it one level and says so,
+because the request inlined that helper's body and the model judged on it:
+
+```tsx
+// fixtures/useeffect-alternatives/should-warn/setter-through-helper.tsx
+function evaluateCount(value) {
+  if (value >= 10) setFinished(true)
+}
+useEffect(() => {
+  evaluateCount(count)
+}, [count])
+```
+```
+  20:3  error  This effect calls `evaluateCount(count)`, which sets `finished`. Compute the whole next state in the handler that sets `count` and delete the effect. Or compute it during render and delete the state and the effect.  react/useeffect-alternatives
+```
+
+Which outcomes it can report, and the measurements behind every threshold, are in
 [docs/internals.md](docs/internals.md#calibration).
+
+**`react/pointless-usememo`** reports a `useMemo` whose computation is cheap *and* whose value
+no consumer compares by reference. Both halves need context: the cost depends on what `format`
+does, and identity depends on where `label` ends up.
+
+```tsx
+const label = useMemo(() => ({ text: format(amount, currency) }), [amount, currency])
+```
+```
+  8:17  warning  This useMemo does nothing. The computation is constant work and `label` is only read at line 9. Inline the expression and remove the dep array.  react/pointless-usememo
+```
 
 ## Configuring it
 
@@ -102,8 +107,8 @@ export default defineConfig({
   files: ["src/**/*.{ts,tsx}"],
   plugins: [react],
   rules: {
-    "react/pointless-usememo": "warn",
     "react/useeffect-alternatives": ["error", { context: "This app renders 10k-row tables." }],
+    "react/pointless-usememo": "warn",
   },
 })
 ```
