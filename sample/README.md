@@ -1,74 +1,82 @@
-# sample/ — ESLint vs hugaw, same file
+# sample
 
-**This is not the vitest suite.** That is `../test/`, and `pnpm test` from the repo
-root does not glob this directory (nor does `tsconfig.json`). This directory has its
-own `package.json` and its own `node_modules` so the ESLint plugin never becomes a
-dependency of hugaw itself.
-
-It exists to answer one question: on the same source, what does each tool find?
-
-## Run it
+The same file through both tools, so the difference is visible rather than argued.
 
 ```sh
-cd sample && npm install     # once
-npm run compare             # both tools, side by side
-```
-
-Or separately:
-
-```sh
+npm install
 npm run eslint              # eslint-plugin-react-you-might-not-need-an-effect, all 9 rules, at error
 npm run hugaw               # hugaw, react/useeffect-alternatives only
+npm run compare             # both, one after the other
 ```
 
 `npm run hugaw` needs `TYPESAFE_API_KEY` in the environment or in a `.env` beside it. It
 reports what it spent on its own stats line, so there is no figure to keep up to date here:
 
 ```
-5 candidates, 0 skipped statically, 5 judged · 21.5k tokens · $0.0009 @ $0.042/M
+6 candidates, 0 skipped statically, 6 judged · 26.6k tokens · $0.0011 @ $0.042/M
 ```
 
 ## What `src/sample.tsx` is for
 
-Five effects, each chosen because it separates the two tools. Measured output as of
-2026-09-21:
+Six effects. Five should be reported and one should not, and in every reported case the work
+that makes the effect wrong happens **inside a helper function**, not in the effect body. That
+is the shape a rule reading one syntax tree cannot follow.
 
-| # | component | ESLint plugin | hugaw |
-|---|---|---|---|
-| 1a | `TotalsInline` | reports (+ a spurious `no-pass-data-to-parent`) | reports |
-| 1b | `TotalsImported` | **silent** | reports, and flags the unread callee |
-| 2 | `ProductPage` | **silent** — no fetch rule exists | reports, names the data-library fix |
-| 3 | `NameField` | reports, **advice would break it** | reports, **and keeps it editable** |
-| 4 | `Presence` | silent (correct) | silent (correct) |
+Measured output, both tools, 2026-09-24:
 
-**1a versus 1b is the whole difference in two components.** Identical shape, identical
-prop, identical setter — the only change is whether the value passes through an
-imported function. A rule that reads one file has to go quiet there; hugaw inlines
-same-file bodies into `effect_body.resolved` and reports cross-file ones as a blind
-spot in the message.
+```
+eslint-plugin-react-you-might-not-need-an-effect  (all 9 rules, at error)
 
-**Case 2** is the canonical fetch-in-an-effect from the skill (races, no cancellation).
-The plugin ships no rule for it: `no-derived-state` needs the setter's *arguments* to
-trace back to props or state, and `.then(setProduct)` hands the setter over rather
-than calling it.
+  54:9  error  Avoid using state and effects as an event handler. Instead, call the event
+               handling code directly when the event occurs  ymnne/no-event-handler
 
-**Case 3 is the honest one, and the reason this directory exists.** `name` is written
-both in the effect and in the change handler, so "compute it during render" deletes the
-user's ability to type. Both tools currently give breaking advice. hugaw carries the
-deciding evidence in its payload —
-
-```json
-"writes": [
-  { "line": 43, "within": "effect",  "argument": "user.name" },
-  { "line": 46, "within": "handler", "argument": "e.target.value" }
-]
+✖ 1 problem (1 error, 0 warnings)
 ```
 
-— and picks the one fix that preserves it: `use_linked_state` at 0.99. It did not always.
-This case originally returned `derive_by_id` 0.56 with `render_computation` behind it,
-both of which delete the user's ability to type, and `use_linked_state` was not on the
-menu at all. The signal was in the payload the whole time; what was missing was a
-criterion that split on *what the effect writes* — a constant it clears, or a value
-seeded from the source. See the Calibration section of `docs/internals.md`.
+```
+hugaw  react/useeffect-alternatives
 
-Bodies for 1b and 2 live in `src/_lib.ts` so the cross-file path is exercised.
+  16:3  error  This effect calls `syncUser()`. Compute it during render (use `useMemo` if the work is expensive) and delete the effect.
+  33:3  error  This effect calls `evaluateCount(count)`, which sets `finished`. Compute the whole next state in the handler that sets `count` and delete the effect. Or compute it during render and delete the state and the effect.
+  53:3  error  This rule cannot describe what this effect does. Do that work in the handler that sets `status` and delete the effect. The effect's writes could not be resolved. Verify before removing.
+  69:3  error  This effect calls `updateName()`, which sets `fullName`. Compute it during render (use `useMemo` if the work is expensive) and delete the state and the effect.
+  85:3  error  This effect calls `performSubmission()`, which calls `submitOrder()`. Do that work in the handler that sets `shouldSubmit` and delete the effect.
+
+✖ 5 problems (5 errors, 0 warnings)
+```
+
+| component | what it is | ESLint plugin | hugaw |
+|---|---|---|---|
+| `UserCard` | helper calls a helper that sets state | silent | reports, names no state (below) |
+| `Counter` | helper sets state | silent | reports, **names `finished`** |
+| `Payment` | effect calls an object-literal method | reports (`no-event-handler`) | reports, says it cannot describe it |
+| `Profile` | helper sets state | silent | reports, **names `fullName`** |
+| `Checkout` | helper performs an outward action | silent | reports, **names `submitOrder()`** |
+| `Presence` | WebSocket with a cleanup | silent (correct) | silent (correct) |
+
+**`Counter`, `Profile` and `Checkout` are the case for the whole project.** The effect body is
+one call to a local function; everything that decides the verdict is inside that function.
+hugaw inlines the helper's body into the request, the model judges on it, and the message
+follows the same one level so the sentence shows the evidence: *which sets `finished`*.
+
+**`UserCard` is the honest limit.** `syncUser()` calls `updateDisplayName()`, and *that* sets
+the state — two levels. hugaw inlines one body, so it reports the effect but names no state,
+and the fix degrades to "delete the effect" rather than claiming a write it never saw.
+
+**`Payment` is the one the ESLint plugin gets and hugaw does not describe.** The effect calls
+`actions.complete()`, a method on an object literal, which hugaw does not resolve to a
+function. It still reports, and says plainly that it could not describe the body.
+
+**`Presence` is the one that matters most.** A WebSocket subscription with a cleanup is a
+legitimate effect, and a tool that tells you to delete it is worse than no tool. Both are
+silent.
+
+## What this directory no longer shows
+
+There used to be a cross-file pair here — the same computation with its callee in
+`src/sample.tsx` and in `src/_lib.ts` — demonstrating that hugaw inlines a same-file body and
+caveats a cross-file one. `src/sample.tsx` no longer imports anything but React, so
+**`src/_lib.ts` is unused and that comparison is not in this directory any more**. The
+behaviour it showed is still real and still tested; see
+`fixtures/useeffect-alternatives/should-warn/fetch-cross-file.tsx`, whose finding carries
+*`fetchProduct` is defined in another file and was not read.*

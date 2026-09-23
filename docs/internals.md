@@ -574,7 +574,12 @@ you margin on whichever case had the least to spare.
 
 The message is the product. An agent reads stdout and edits the file; nothing else ships.
 
-The shape is fixed: `<claim>: <observation>; <fix>[; <caveat>]...`. The rules it follows:
+The shape is short sentences, one idea each: what the effect does, then what to do, then any
+blind spot. It was a single clause chain held together by a colon and semicolons until a user
+pointed out that it reads like a config value rather than like something written for a person.
+Full stops cost words, which is why the budget below is what it is.
+
+The rules it follows:
 
 - **Never assert more than was observed.** The observation half is built from static facts
   only, never from the model, because the fix is a judgment and is allowed to be wrong while
@@ -590,17 +595,32 @@ The shape is fixed: `<claim>: <observation>; <fix>[; <caveat>]...`. The rules it
   `decide` instead. The numbers go to `metadata.findings` in `--format json-with-metadata`.
 - **No em-dashes.** One dash was doing three unrelated jobs (separating claim from
   observation, bracketing an aside, introducing a caveat's instruction), which reads as a row
-  of minus signs in a monospace terminal. Claims end in a colon, asides take parentheses,
-  caveats take a comma or "so". Sentences were re-read rather than swapped character for
-  character, because half of them become comma splices otherwise.
+  of minus signs in a monospace terminal. Asides take parentheses, clauses take a comma or
+  "so", and separate ideas take separate sentences. Sentences were re-read rather than
+  swapped character for character, because half of them become comma splices otherwise.
 - **Caveats only for real blind spots**, never boilerplate, and each names the blind spot it
   actually found. Spread usages and unclassifiable usages are counted and worded separately,
   so an agent is never sent hunting for a spread that is not there. Singular and plural follow
   the count.
-- **A word budget that drops whole clauses.** `WORD_BUDGET = 35`. Findings had drifted to 58
+- **One call, named once.** `fetch(u).then(parse).then(setUser)` is three `CallExpression`s
+  that all classify off the same leftmost identifier, so the observation named the same chain
+  three times. `isRootCall` in `analysis/body-calls.ts` keeps only the call a reader can act
+  on. It filters the *observation*, never the rows, so a setter handed over by a later link
+  (`.then(setUser)`) is still found and the state is still named.
+- **One level into a same-file helper.** An effect whose body is a single call to a local
+  function used to read "This effect calls `evaluateCount(count)`" and stop, even though the
+  payload had inlined that helper, the model had read it, and the verdict was right.
+  `analysis/indirect.ts` walks the same one level the payload inlines and collects what the
+  observation and the fix phrases draw on: state this unit declares, callback props,
+  externals, and calls that leave the component. The sentence then says *which sets
+  `finished`*, and `statesWritten` includes it so the fix does not under-claim. One level
+  exactly, because that is how far the evidence goes; a helper calling a helper earns no
+  clause and the fix degrades rather than guessing.
+- **A word budget that drops whole clauses.** `WORD_BUDGET = 45`. Findings had drifted to 58
   words where the memo rule's sit at 23. Over budget, `DROP_ORDER` removes clauses in a fixed
   order of expendability: the `useMemo` aside, then the keep-family caveat, then the
-  alternative fix. Never a mid-sentence truncation, and never the fix itself or an
+  alternative fix. A part that carries its own "which …" clause makes the outer list take a
+  serial comma, so the reader can tell which "and" belongs to which. Never a mid-sentence truncation, and never the fix itself or an
   unresolved-callee caveat, which names code the reader cannot see. If everything expendable
   is gone and it is still long, what remains is load-bearing and it ships long.
 
@@ -610,7 +630,9 @@ keep caveat and the alternative fix are mutually exclusive in practice, since bo
 from the single runner-up and it is either in the keep family or it is not.
 
 Config `message` and `messageSuffix` are applied in `core/message.ts`, after `decide` and
-outside the rule.
+outside the rule. A config-supplied `fix` from `extends.replacements` goes through the same
+budget and the same punctuation rules, and its placeholders drop their clause when they
+cannot resolve, for the same reason `describeWritten` degrades.
 
 ## Fixtures
 

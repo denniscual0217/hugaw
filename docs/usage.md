@@ -63,7 +63,7 @@ Output, in ESLint's stylish layout:
 
 ```
 src/Price.tsx
-  8:17  warning  useMemo has no effect: constant work, and `label` is only read at line 9; inline the expression and remove the dep array  react/pointless-usememo
+  8:17  warning  This useMemo does nothing. The computation is constant work and `label` is only read at line 9. Inline the expression and remove the dep array.  react/pointless-usememo
 
 ✖ 1 problem (0 errors, 1 warning)
 1 candidates, 0 skipped statically, 1 judged
@@ -324,7 +324,7 @@ export function Price({ amount, currency }) {
 ```
 
 ```
-  8:17  warning  useMemo has no effect: constant work, and `label` is only read at line 9; inline the expression and remove the dep array  react/pointless-usememo
+  8:17  warning  This useMemo does nothing. The computation is constant work and `label` is only read at line 9. Inline the expression and remove the dep array.  react/pointless-usememo
 ```
 
 After:
@@ -365,7 +365,7 @@ export function ProductList({ products }) {
 ```
 
 ```
-  6:3  warning  useEffect should not exist: sets `filtered` from `products`; compute it during render (use `useMemo` if the work is expensive) and delete the state and the effect  react/useeffect-alternatives
+  6:3  error  This effect only sets `filtered` from `products`. Compute it during render (use `useMemo` if the work is expensive) and delete the state and the effect.  react/useeffect-alternatives
 ```
 
 After:
@@ -425,20 +425,20 @@ reported to silent.
 Read the caveat clauses. They are not boilerplate and they are not appended unless there is
 a real blind spot, so when one is present it marks something hugaw could not see:
 
-- `1 callee (slugify) unresolved across files, verify before removing` — the body is in
-  another file and was not read.
-- `2 of 5 usages unresolved behind a spread, verify before removing` — a spread hides which
+- `` `slugify` is defined in another file and was not read. Check what it does before
+  removing. `` — the body was never inlined into the request.
+- `1 of 1 usage is hidden behind a spread. Verify before removing.` — a spread hides which
   fields a consumer reads.
-- `N of M usages could not be classified (line 12), verify before removing` — a reference in
+- `N of M usages could not be classified (line 12). Verify before removing.` — a reference in
   a position the analysis does not recognise. Counted separately from spreads on purpose, so
   you are never sent hunting for a spread that is not there.
-- `weak identity signal, verify no consumer compares references` — the evidence was near the
-  threshold.
-- *`setTotal` looks like a state setter but came from a `useState` that does not resolve to
-  React's, so check this file's imports before removing* — something was written, but hugaw
+- `The identity signal is weak. Verify no consumer compares references.` — the evidence was
+  near the threshold.
+- *`setTotal` looks like a state setter, but it came from a `useState` that does not resolve
+  to React's. Check this file's imports before removing.* — something was written, but hugaw
   could not confirm it is React state, so the fix is reasoning about something it did not see.
-- *the effect body is `syncTitle`, defined elsewhere, verify before removing* — the callback
-  was passed by name and could not be followed to a body.
+- *The effect body is `syncTitle`, which is defined elsewhere. Verify before removing.* — the
+  callback was passed by name and could not be followed to a body.
 
 If the finding still looks wrong after that, `--format json-with-metadata` gives you the
 probabilities the verdict was computed from.
