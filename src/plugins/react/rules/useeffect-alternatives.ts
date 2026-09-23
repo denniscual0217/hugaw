@@ -8,7 +8,7 @@ import type { EffectData } from "./effect-data.js"
 import { KEEP_FAMILY, REPLACEMENTS, effectQuestions } from "./effect-questions.js"
 import type { Replacement } from "./effect-questions.js"
 
-/* ── thresholds (measured; CALIBRATION.md) ───────────────────────────────── */
+/* ── thresholds (measured live — see docs/internals.md) ─────────────────── */
 
 /**
  * How much of the Choice's mass may sit on the three outcomes that leave the
@@ -18,9 +18,10 @@ import type { Replacement } from "./effect-questions.js"
  * sum to at most 0.35 on the keep family and effects that must stay to at
  * least 0.73, with nothing in between. That gap is why this single number
  * replaces the Noul the plan gated on — that question's two wordings put
- * keeps and deletes in overlapping ranges both times. CALIBRATION.md carries
- * the current table and is the source of truth for these figures; a number
- * repeated here goes stale the next time the option list changes.
+ * keeps and deletes in overlapping ranges both times. The Calibration
+ * section of `docs/internals.md` carries the current table and is the source
+ * of truth for these figures; a number repeated here goes stale the next
+ * time the option list changes.
  *
  * Mass, not the mode, and the distinction is the whole point: a distribution
  * like `{keep .30, effect_event .12, mount .05, render .31, memo .22}` has a
@@ -35,8 +36,8 @@ export const KEEP_FAMILY_MASS_MAX = 0.5
  * Measured: the largest runner-up in the ablation is a chain whose first link
  * is also a plain derivation, where two fixes are genuinely both defensible.
  * The plan's guess of 0.25 would have fired on one case in twenty-three.
- * CALIBRATION.md has the figures; they are not repeated here because they
- * move whenever an option is added.
+ * `docs/internals.md` has the figures; they are not repeated here because
+ * they move whenever an option is added.
  */
 export const EITHER_OR_MIN = 0.1
 

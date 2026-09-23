@@ -1,19 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
-function Slider({ value, onChange }) {
-  const [currentValue, setCurrentValue] = useState(value);
+function EditableNote({ isEditing }) {
+  const textareaRef = useRef(null);
 
   useEffect(() => {
-    onChange(currentValue);
-  }, [currentValue, onChange]);
+    if (isEditing) {
+      textareaRef.current?.focus();
+    }
+  }, [isEditing]);
 
-  return (
-    <input
-      type="range"
-      value={currentValue}
-      onChange={(e) => setCurrentValue(Number(e.target.value))}
-    />
-  );
+  return isEditing ? <textarea ref={textareaRef} /> : null;
 }
 
 // function Toggle({ onChange }) {

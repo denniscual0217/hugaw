@@ -15,7 +15,7 @@ export interface CalleeSources {
 /**
  * Bodies of the functions the memo factory calls.
  *
- * CALIBRATION.md cases B and D are identical call shapes with opposite
+ * The calibration's cases B and D are identical call shapes with opposite
  * verdicts (2.00 vs 0.11), decided purely by the inlined body — this slice is
  * what earns the rule its accuracy. Cross-file callees go to `unresolved`
  * (no digest pass in the MVP) and drive the caveat clause.
@@ -55,7 +55,7 @@ export function calleeSourcesIn(scope: TsNode, filePath: string): CalleeSources 
     // already see, on the majority of findings, is noise that teaches an
     // agent to skip the caveat line. The platform's own signatures are also
     // the one case where the *name alone* is a reliable description, which is
-    // exactly what CALIBRATION.md case C says cross-file names are not.
+    // exactly what the calibration's case C says cross-file names are not.
     if (declaration?.getSourceFile().isDeclarationFile()) continue
     if (!declaration || declaration.getSourceFile().getFilePath() !== filePath) {
       unresolved.push(name)
@@ -66,7 +66,7 @@ export function calleeSourcesIn(scope: TsNode, filePath: string): CalleeSources 
       // A parameter, a destructured prop, or a binding whose initializer is
       // not a literal function: we have a name and no body. Recording the
       // name *as* the body would tell the model `transform` does whatever
-      // "transform" sounds like — the exact failure mode CALIBRATION.md
+      // "transform" sounds like — the exact failure mode the calibration's
       // case C warns about, minus its only mitigation.
       unresolved.push(name)
       continue

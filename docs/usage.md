@@ -258,7 +258,7 @@ Severity sets the exit code: `"warn"` findings alone exit 0 (unless `--max-warni
 exceeded), `"error"` findings exit 1.
 
 Thresholds are not configurable. They are module constants in each rule file, set from live
-measurements recorded in `CALIBRATION.md`.
+measurements recorded in the [Calibration](internals.md#calibration) section of `internals.md`.
 
 ## The rules
 

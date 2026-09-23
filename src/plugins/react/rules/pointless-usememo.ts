@@ -7,7 +7,7 @@ import { isReactApi } from "../analysis/react-imports.js"
 import { dependencyCoverage as coverageOf } from "../analysis/render-triggers.js"
 import type { MemoData } from "./memo-data.js"
 
-/* ── thresholds (SPEC §3; validated in CALIBRATION.md) ───────────────────── */
+/* ── thresholds (SPEC §3; validated live — see docs/internals.md) ───────── */
 
 /** Weak evidence of legitimacy is enough to stay quiet. */
 export const IDENTITY_MATTERS_MAX = 0.4

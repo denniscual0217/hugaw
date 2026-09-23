@@ -69,6 +69,6 @@ This case originally returned `derive_by_id` 0.56 with `render_computation` behi
 both of which delete the user's ability to type, and `use_linked_state` was not on the
 menu at all. The signal was in the payload the whole time; what was missing was a
 criterion that split on *what the effect writes* — a constant it clears, or a value
-seeded from the source. See `CALIBRATION.md`.
+seeded from the source. See the Calibration section of `docs/internals.md`.
 
 Bodies for 1b and 2 live in `src/_lib.ts` so the cross-file path is exercised.

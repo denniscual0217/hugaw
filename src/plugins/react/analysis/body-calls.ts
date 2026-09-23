@@ -175,7 +175,7 @@ export function classifyCall(
  * names we could not.
  *
  * `resolved`/`unresolved` come from the memo rule's own walk, deliberately: a
- * cross-file callee is the same blind spot for both rules, and CALIBRATION.md
+ * cross-file callee is the same blind spot for both rules, and the calibration's
  * case C is the reason it must be named rather than guessed at from the name.
  */
 export function bodyCalls(

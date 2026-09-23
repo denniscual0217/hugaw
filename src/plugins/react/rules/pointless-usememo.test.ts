@@ -103,11 +103,11 @@ function decide(cost: number, confidence: number, identity: number): Verdict<Mem
 describe("pointless-usememo decide() thresholds", () => {
   const cases: { name: string; cost: number; confidence: number; identity: number; reports: boolean }[] = [
     { name: "cheap, confident, no identity need", cost: 0.0, confidence: 1.0, identity: 0.08, reports: true },
-    // CALIBRATION.md case D — the inlined callee makes it cheap.
+    // Calibration case D — the inlined callee makes it cheap.
     { name: "calibration D", cost: 0.11, confidence: 0.89, identity: 0.08, reports: true },
-    // CALIBRATION.md case E — a sort is not free.
+    // Calibration case E — a sort is not free.
     { name: "calibration E (cost)", cost: 2.0, confidence: 1.0, identity: 0.12, reports: false },
-    // CALIBRATION.md case F — a context value must keep its identity.
+    // Calibration case F — a context value must keep its identity.
     { name: "calibration F (identity)", cost: 0.0, confidence: 1.0, identity: 0.85, reports: false },
     { name: "identity exactly at the ceiling", cost: 0, confidence: 1, identity: IDENTITY_MATTERS_MAX, reports: true },
     { name: "identity just over the ceiling", cost: 0, confidence: 1, identity: IDENTITY_MATTERS_MAX + 0.01, reports: false },

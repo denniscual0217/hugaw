@@ -98,7 +98,7 @@ describe("the question set", () => {
   it("asks one question, because the second could not gate", () => {
     // Measured over 17 cases: keep-family mass separates the two families
     // (deletes <= 0.18, keeps >= 0.95) where both Noul wordings overlapped.
-    // See CALIBRATION.md.
+    // See the Calibration section of docs/internals.md.
     expect(Object.keys(effectQuestions)).toEqual(["replacement"])
   })
 })

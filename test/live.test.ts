@@ -11,7 +11,7 @@ const live = process.env["HUGAW_LIVE"] === "1" && (process.env["TYPESAFE_API_KEY
 
 /** One opt-in integration test against the real API (SPEC §9). */
 describe.skipIf(!live)("live TypeSafe judgment", () => {
-  it("warns on the constant-object fixture and matches CALIBRATION.md case A", async () => {
+  it("warns on the constant-object fixture and matches calibration case A", async () => {
     const seen: { request: JudgeRequest; response: JudgeResponse | null }[] = []
     const inner = new TypeSafeJudge({ model: "jev-1.13.0" })
     const judge: Judge = {
@@ -40,7 +40,7 @@ describe.skipIf(!live)("live TypeSafe judgment", () => {
     expect(identity.type).toBe("noul")
     if (cost.type !== "score" || identity.type !== "noul") throw new Error("unreachable")
 
-    // CALIBRATION.md case A: cost 0.00 / conf 1.00 / identity 0.08 → WARN.
+    // Calibration case A: cost 0.00 / conf 1.00 / identity 0.08 → WARN.
     expect(cost.score).toBeLessThan(1.2)
     expect(cost.confidence).toBeGreaterThanOrEqual(0.6)
     expect(identity.noul).toBeLessThanOrEqual(0.4)
@@ -50,7 +50,7 @@ describe.skipIf(!live)("live TypeSafe judgment", () => {
     expect(report.stats.inputTokens).toBeGreaterThan(0)
   })
 
-  it("stays silent on an expensive computation (CALIBRATION.md case E)", async () => {
+  it("stays silent on an expensive computation (calibration case E)", async () => {
     const report = await runLint({
       config: resolveConfig({ files: ["**/*.tsx"], model: "jev-1.13.0", plugins: [react] }),
       adapters: [typescriptAdapter],

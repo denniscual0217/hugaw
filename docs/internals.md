@@ -176,7 +176,7 @@ owns that.
 ### `callee_sources`, and why it is the accuracy
 
 `calleeSourcesIn` walks the factory (or the effect callback) and, for every call, inlines the
-callee's body when it can. `CALIBRATION.md` cases B and D are the proof it earns its tokens:
+callee's body when it can. Calibration cases B and D are the proof it earns its tokens:
 identical call shapes, `buildPivot(rows)` and `countRows(rows)`, scoring 2.00 and 0.11,
 decided purely by the body that was inlined.
 
@@ -237,7 +237,7 @@ The asymmetry is deliberate: weak evidence of legitimacy suppresses, strong evid
 pointlessness reports. The burden of proof is on the linter.
 
 `IDENTITY_CAVEAT_MIN = 0.2` is the bottom of the band that earns the "weak identity signal"
-caveat. `CALIBRATION.md` has no row for it; it changes the wording of a finding already
+caveat. The calibration has no row for it; it changes the wording of a finding already
 decided, never whether one is made.
 
 `rendersWithUnchangedDeps` is computed and **not** gated on. `dependencyCoverage` collects
@@ -270,13 +270,11 @@ export const EITHER_OR_MIN        = 0.1
    mode under half the mass is a distribution nobody has measured, and this rule deletes code.
 4. Otherwise the `replaceEffect` finding, with the mode choosing the fix phrase.
 
-`KEEP_FAMILY_MASS_MAX = 0.5` is measured over 17 cases and is the reason a second question
-was deleted rather than tuned. In the current (post `use_linked_state`) table, effects that
-must be deleted put at most 0.32 on the keep family (six of them put exactly 0.00) and
-effects that must be kept put at least 0.94. Nothing lands between. 0.5 sits 0.18 above the
-highest delete and 0.44 below the lowest keep, and all 17 cases fall on the correct side.
-(The doc comment in the rule file still quotes the pre-re-measurement figures, 0.17 and 0.92;
-`CALIBRATION.md` is the current table.)
+`KEEP_FAMILY_MASS_MAX = 0.5` is measured, and it is the reason a second question was deleted
+rather than tuned: effects that must be deleted land in one band, effects that must be kept
+land in another, and nothing lands between them. The bands move by a few hundredths run to
+run and by more than that whenever an option is added to the Choice, so the numbers live in
+one place — [Calibration](#calibration) — rather than being restated here.
 
 Summing the family rather than reading the mode is the whole mechanism. A distribution like
 `{keep .30, effect_event .12, mount .05, render .31, memo .22}` has a delete-family mode and
@@ -284,7 +282,7 @@ Summing the family rather than reading the mode is the whole mechanism. A distri
 
 `wrapMountEffect` requires the mode and not only the mass, and that requirement carries
 weight: SKILL.md's canonical `useSyncExternalStore` example has empty deps, a cleanup and
-listeners, which is `mount_effect`'s stated evidence verbatim. Measured (`CALIBRATION.md`
+listeners, which is `mount_effect`'s stated evidence verbatim. Measured ([Calibration](#calibration)
 case 2), it puts nearly all its mass on `external_store` and next to none on `mount_effect`.
 Gating on the evidence rather than on the model's own choice would tell a reader to do the
 opposite of the right thing.
@@ -301,13 +299,13 @@ go.
 ## Two rules of method
 
 **Thresholds come from live ablations, not from judgment.** Every constant in
-`src/plugins/react/rules/**` should be traceable to a row in `CALIBRATION.md`, and where it is
+`src/plugins/react/rules/**` should be traceable to a row in [Calibration](#calibration) below, and where it is
 not, the rule file says so in a comment. The memo rule's four gates come from a six-case run
 made *before* the rule was implemented; the effect rule's two come from a seventeen-case run
 made before `decide` existed, which changed the rule's shape (one question instead of two)
-rather than confirming it. Five runs across three payload revisions and two criteria revisions
-gave the same mode on all 17 cases, so those numbers are reproducible rather than a single
-sample. The discipline is visible in what is missing: a second, lower cost threshold for the
+rather than confirming it; that run has since grown to twenty-three cases as options were
+added. Repeated runs across several payload and criteria revisions gave the same mode on
+every case, so the numbers are reproducible rather than a single sample. The discipline is visible in what is missing: a second, lower cost threshold for the
 case where `rendersWithUnchangedDeps` holds was written and then deleted, because no live
 ablation supported the number it needed, and a hand-picked constant that only ever suppresses
 is still an unmeasured decision to drop findings. The signal is computed and carried into
@@ -326,6 +324,251 @@ hold thousands on the other. Ablated live, the same filter moved from 1.10/0.90 
 information to the old rubric only reached 1.41/0.59, which is suppression by doubt, and doubt
 is not a mechanism to rely on. Before you write a criterion that names a fact, check that some
 slice carries that fact.
+
+## Calibration
+
+The evidence behind every threshold in `src/plugins/react/rules/**`. Both rules were ablated
+against `jev-1.13.0` *before* they were implemented, and in the effect rule's case the run
+changed the design rather than confirming it.
+
+Reproduce the effect rule's run with:
+
+```sh
+HUGAW_LIVE=1 npx vitest run test/effect-ablation.live.test.ts
+```
+
+That file is the ablation: the cases, the two rejected question wordings, and an assertion
+that the gate still separates the two families. Sources are synthetic — the repository this
+was designed against is an employer's codebase and was never sent to the API.
+
+### `react/pointless-usememo`
+
+> **Stale as of 2026-09-21.** Measured against the pre-2026-09-21 cost rubric; the verdicts
+> still hold, but the `cost` column predates the bounded/unbounded criteria. Do not re-derive
+> thresholds from these numbers.
+
+Six cases, run before implementation, 6/6 correct. Thresholds under test:
+`identity_matters > 0.4` → silent · `cost > 1.2` → silent · `confidence < 0.6` → silent.
+
+| case | scenario | cost | conf | identity | verdict | correct |
+|---|---|---:|---:|---:|---|---|
+| A | `` `${currency}${amount.toFixed(2)}` `` rendered in `<span>` | 0.00 | 1.00 | 0.08 | **WARN** | ✓ |
+| B | `buildPivot(rows)`, callee source inlined (nested loops) | 2.00 | 1.00 | 0.10 | silent (cost) | ✓ |
+| C | `buildPivot(rows)`, callee **unresolved** (cross-file) | 2.00 | 0.99 | 0.11 | silent (cost) | ✓ |
+| D | `countRows(rows)`, callee source inlined (`rows.length`) | 0.11 | 0.89 | 0.08 | **WARN** | ✓ |
+| E | `[...users].sort(...)` iterated in render | 2.00 | 1.00 | 0.12 | silent (cost) | ✓ |
+| F | `({theme, locale})` passed as context `value` | 0.00 | 1.00 | 0.85 | silent (identity) | ✓ |
+
+3,634 input tokens for all six = **$0.000153**.
+
+**B versus D is the proof `callee_sources` earns its keep.** Identical call shape, opposite
+verdict — 2.00 against 0.11 — decided purely by the inlined callee body. Both are fixtures
+for that reason.
+
+**C got the right answer for a possibly wrong reason.** With the body unresolved the model
+inferred expense from the *name* `buildPivot`. Correct here, but name-based inference is not
+reliable: a cross-file `formatLabel` would likely read as cheap and could produce a false
+warning. That is why `unresolved` drives a caveat instead of a suppression, and why C is not
+evidence that a digest pass is unnecessary.
+
+**Confidence ran 0.89–1.00**, so `MIN_CONFIDENCE = 0.6` almost never fires. It is kept as
+cheap insurance, not as a load-bearing gate.
+
+**F is caught twice** — once by `identity_matters` at 0.85, and once by the `skip` that
+existed at the time. That `skip` has since been deleted; the model alone now holds that case,
+which is the direction the project moved in generally.
+
+### `react/useeffect-alternatives`
+
+Twenty-three cases. The original sixteen came from the plan; 17 is a control added when 12
+turned out to be confounded; 18–21 were added with the `ref_callback` option; 22–23 are the
+two links of one state chain.
+
+`keepFam` is the summed mass of `keep_effect + mount_effect + effect_event` — the gate.
+`noul¹` and `noul²` are two wordings of a **second question that was measured and deleted**;
+they survive in the ablation file so this table can be re-derived, and nowhere else.
+
+| # | case | mode | mass | keepFam | runner-up | noul¹ | noul² |
+|---|---|---|---:|---:|---|---:|---:|
+| 1 | websocket chat room | `keep_effect` | 0.99 | **0.99** | external_store 0.01 | 0.48 | 0.93 |
+| 2 | online/offline mirror | `external_store` | 0.98 | **0.02** | mount_effect 0.02 | 0.29 | 0.65 |
+| 3 | setInterval clock | `mount_effect` | 0.50 | **0.93** | keep_effect 0.43 | 0.40 | 0.84 |
+| 4 | derived state | `render_computation` | 1.00 | **0.00** | — | 0.10 | 0.02 |
+| 5 | selection reset on `[items]` | `derive_by_id` | 0.92 | **0.00** | key_prop 0.07 | 0.12 | 0.02 |
+| 6 | profile reset on `[userId]` | `key_prop` | 0.99 | **0.00** | derive_by_id 0.01 | 0.13 | 0.03 |
+| 7 | LikeButton flag | `event_handler` | 1.00 | **0.00** | — | 0.14 | 0.10 |
+| 8 | notify parent of a toggle | `notify_parent` | 1.00 | **0.00** | — | 0.13 | 0.06 |
+| 9 | child bubbles query data up | `lift_fetch` | 0.89 | **0.10** | effect_event 0.08 | 0.20 | 0.06 |
+| 10 | fetch on id change, callee cross-file | `data_library` | 0.96 | **0.04** | keep_effect 0.04 | 0.18 | 0.13 |
+| 11 | auth from storage on `[]` | `module_init` | 0.99 | **0.01** | mount_effect 0.01 | 0.14 | 0.27 |
+| 12 | ResizeObserver on `[]`, writes width to state | `external_store` | 0.65 | **0.35** | mount_effect 0.31 | 0.50 | 0.86 |
+| 13 | `document.title` on `[title]` | `keep_effect` | 0.97 | **0.97** | render_computation 0.03 | 0.18 | 0.40 |
+| 14 | effect inside a custom hook | `notify_parent` | 0.93 | **0.05** | keep_effect 0.03 | 0.16 | 0.06 |
+| 15 | no dependency array at all | `keep_effect` | 0.97 | **1.00** | mount_effect 0.03 | 0.24 | 0.80 |
+| 16 | `async` callback with `.then(setX)` | `data_library` | 0.96 | **0.04** | keep_effect 0.04 | 0.18 | 0.13 |
+| 17 | third-party widget on `[]` *(control for 12)* | `mount_effect` | 0.72 | **0.97** | keep_effect 0.24 | 0.46 | 0.92 |
+| 18 | focus a conditionally rendered input | `ref_callback` | 0.98 | **0.02** | keep_effect 0.02 | 0.26 | 0.85 |
+| 19 | focus an always-mounted input | `keep_effect` | 0.85 | **0.85** | ref_callback 0.14 | 0.23 | 0.79 |
+| 20 | scroll a conditionally rendered node into view | `ref_callback` | 0.75 | **0.25** | keep_effect 0.25 | 0.23 | 0.78 |
+| 21 | measure a node on mount, store the width | `keep_effect` | 0.69 | **0.73** | ref_callback 0.15 | 0.21 | 0.38 |
+| 22 | cascading state, first link (`count` → `isTen`) | `render_computation` | 0.53 | **0.01** | collapse_to_handler 0.46 | 0.13 | 0.02 |
+| 23 | cascading state, second link (`isTen` → `message`) | `collapse_to_handler` | 0.58 | **0.01** | render_computation 0.41 | 0.12 | 0.02 |
+
+About 4,770 input tokens per case, 109,813 for the run: **$0.0046**.
+
+### The gate, as a band
+
+`KEEP_FAMILY_MASS_MAX = 0.5`. Sorted, the keep-family mass across all 23 cases:
+
+```
+must be deleted (16)   0.00 ×5   0.01 ×3   0.02 ×2   0.04 ×2   0.05   0.10   0.25   0.35
+must be kept     (7)   0.73   0.85   0.93   0.97 ×2   0.99   1.00
+```
+
+**Deletes at or under 0.35, keeps at or above 0.73**, with nothing in between. Read these as
+bands, not as points: they move by a few hundredths run to run, and they move more than that
+whenever an option is added to the Choice. The two narrowest keeps are the newest cases — 19
+at 0.85 and 21 at 0.73 — and without those the keep band starts at 0.93.
+
+**Case 12 occupies 0.32–0.35 across four runs.** It is the narrowest clearance in the table
+and the one to re-measure first whenever the option list changes. Its history is the reason:
+it read 0.17 before `use_linked_state` was added, then 0.32–0.35 after. Adding an option
+redistributes mass everywhere and it lands hardest where the model was least certain to begin
+with.
+
+`EITHER_OR_MIN = 0.10` decides when the runner-up's fix prints as an alternative. The largest
+runner-up in the table is `collapse_to_handler` at 0.46 on case 22 — the genuine near-tie the
+threshold exists for, a chain whose first link is also a plain derivation. The next are 0.25
+(case 12) and 0.24 (case 17). The plan's guessed 0.25 would have fired on one case in
+twenty-three.
+
+There are no other thresholds for this rule.
+
+### Why the second question was deleted
+
+This is the clearest illustration in the project of measuring before building.
+
+The plan gated on a Noul asking whether the effect was a genuine synchronisation with an
+external system. Two wordings were measured — `noul¹` restructured both sides around a single
+axis, `noul²` was the plan's enumerating original — and **neither can gate**:
+
+| signal | effects that must go | effects that must stay |
+|---|---|---|
+| keep-family mass | ≤ 0.17 | ≥ 0.92 |
+| `noul¹` | 0.10 – 0.47 | 0.16 – 0.48 |
+| `noul²` | 0.03 – 0.87 | 0.41 – 0.93 |
+
+Both overlap. Under `noul¹`, `document.title` — an effect that must stay — scored 0.16,
+*below* the online/offline mirror at 0.26, which must go. Under `noul²` that same mirror
+scored 0.63, high enough to suppress the very finding it exists to produce.
+
+The Choice had been carrying the signal the whole time, and reading only its mode threw it
+away. Deleting the question removed roughly half the question tokens, three of the four
+guessed constants (`JUSTIFIED_MAX`, `JUSTIFIED_CAVEAT_MIN`, `MOUNT_JUSTIFIED_MIN`), and the
+question of what to do when two questions disagree.
+
+One prediction did not survive contact with the numbers: the concern that a checklist-shaped
+Noul would make `module_init` unreachable. Case 11 scores 0.29 under `noul²`, already on the
+unjustified side of any sane threshold.
+
+### The `use_linked_state` split
+
+Editable state seeded from a prop:
+
+```tsx
+const [name, setName] = useState("")
+useEffect(() => { setName(user.name) }, [user.id])
+return <input value={name} onChange={(e) => setName(e.target.value)} />
+```
+
+This measured `derive_by_id` 0.56 / `render_computation` 0.27. **Both are breaking advice** —
+`name` is editable, and computing or deriving it during render deletes the user's ability to
+type. The option that fits was not on the menu at all, having been dropped earlier in favour
+of `derive_by_id` on the evidence of two cases that are not editable in this way.
+
+**The handler write does not separate the two.** This case and case 5 have identical `writes`
+shapes, an `effect` entry and a `handler` entry:
+
+```
+this case   [["effect", "user.name"], ["handler", "e.target.value"]]
+case 5      [["effect", "null"],      ["handler", "i"]]
+```
+
+What separates them is the **argument of the effect's write**: one seeds the state *from the
+source*, the other *clears* it to a constant. A choice can be kept as an id and looked up
+again; free-typed text cannot be reconstructed from any id. Each criterion now names that
+fact from its own side.
+
+| | before | after |
+|---|---|---|
+| the editable case | `derive_by_id` 0.56, `render_computation` 0.27, `use_linked_state` **absent** | `use_linked_state` **0.99** |
+| case 5 | `derive_by_id` 0.89, `key_prop` 0.11 | `derive_by_id` **0.92**, `key_prop` 0.07 |
+| case 6 | `key_prop` 0.99, `derive_by_id` 0.01 | `key_prop` 0.99, `derive_by_id` 0.01 |
+
+Case 5 got *sharper* rather than degrading, which was the check that mattered: the neighbour
+whose mass the new option was most likely to take instead improved.
+
+### Case 12 is not a miss
+
+A `ResizeObserver` on empty deps that writes the measured width into state comes back
+`external_store`, and the rule reports it. **That is the right answer.** An effect whose whole
+job is to mirror an external value into React state is what `useSyncExternalStore` is for, and
+being set up on mount does not change that. The case cannot set a mount threshold because the
+two options are competing on merit rather than one being wrong.
+
+Case 17 is the same shape with the confound removed — a third-party editor owned for the
+instance's lifetime, no state written, nothing to mirror. It returns `mount_effect` with
+keep-family mass 0.97, which is the `wrapMountEffect` finding, from the mode and the mass,
+with no third threshold needed.
+
+`should-warn/mount-sync-empty-deps.tsx` is case 17's shape for this reason. It was first
+written as case 12's and measured `keep_effect` 0.52 / `mount_effect` 0.35: keep-family mass
+0.97, but a `keep_effect` mode, so the rule stayed silent and a fixture in the warning bucket
+reported nothing. The rule was not changed to accommodate it — the fixture was replaced with
+one the model actually judges that way.
+
+### What individual cases bought
+
+**Case 2 is why `wrapMountEffect` requires the mode, not just the mass.** The canonical
+`useSyncExternalStore` example has empty dependencies, a cleanup and listeners —
+`mount_effect`'s stated evidence, verbatim — and puts 0.02 on `mount_effect`. Gating that
+finding on evidence rather than on the model's own choice would tell a reader to do the
+opposite of the right thing.
+
+**Case 7 settles two criteria that overlap by construction.** `postLike(); setLiked(false)` is
+an outward action *and* a state update, matching `event_handler` and `collapse_to_handler` at
+once. With the contrast saying the outward action decides, it returns `event_handler` 1.00.
+
+**Case 9 is what the hook name in `hookResults` buys.** `onFetched(data)` where `data` came
+from `useGetProductQuery` returns `lift_fetch`, not `data_library`. A bare list of binding
+names could not tell that `data` from a query differs from `data` from a toggle.
+
+**Case 10: an unresolved cross-file callee does not inflate the judgment.** It sits at the
+bottom of the delete band — the opposite direction to the memo rule's case C, and the reason
+that blind spot earns a caveat rather than a suppression.
+
+**Cases 14–16 were open questions.** An effect in a custom hook with no parent returns
+`notify_parent`, so the instruction that "the parent" means the hook's caller lands. An effect
+with no dependency array — a shape no option describes — returns `keep_effect`, so the model
+declines rather than guesses. An `async` callback, where cleanup detection gives up and
+reports `hasCleanup: false`, still returns `data_library`.
+
+**Cases 18–21 are the `ref_callback` set**, and 19 is the one that matters: an always-mounted
+input keyed to another prop returns `keep_effect` 0.85. A ref callback there would fire once
+at mount and never again, silently dropping every later run, and the criterion has to exclude
+it explicitly because it looks identical at the call site.
+
+### The prompt bug worth remembering
+
+When the criteria collapsed from `{description, evidence, contrast}` objects to plain strings,
+the Choice's *instructions* still told the model that "each option's `contrast` names the
+neighbour it is not" — pointing at a field the payload no longer had.
+
+The collapse ablation showed zero mode changes with that sentence in place, so it looked
+harmless. It was not: **case 12 read 0.44–0.50 while the prompt named a missing field, and
+0.35 once it did not.** The narrowest clearance in the table was being eaten by a stale
+sentence. A prompt that references a field which is not there does not fail loudly; it costs
+you margin on whichever case had the least to spare.
 
 ## The message builder
 
@@ -431,7 +674,7 @@ pnpm test:live   # HUGAW_LIVE=1, one opt-in call against the real API
    `HUGAW_LIVE=1` over cases whose right answer you already know, and look at the numbers
    before choosing any threshold. `test/effect-ablation.live.test.ts` is the pattern: it runs
    the slices and the questions with no rule, no `decide` and no constants. Record the table
-   in `CALIBRATION.md`. This is the step that changed rule two from two questions to one.
+   in [Calibration](#calibration). This is the step that changed rule two from two questions to one.
 3. **Write the rule** with `defineRule`: `name` (no `/` in it, the plugin id supplies that),
    `meta` (`description`, `defaultSeverity`), `context` (the slice names it needs), `select`,
    `ask`, `decide`. Omit `skip` unless a candidate can be ruled out on syntax *alone*: a rule
@@ -480,7 +723,7 @@ Each is a single string, ordered so the null hypothesis (`keep_effect`) anchors 
    least certain. Case 12 is the documented ambiguous one; its keep-family mass went from 0.17
    to 0.32 when the fourteenth option landed, halving its clearance below the gate from 0.33
    to 0.18. Nothing crossed and no mode changed, but that is the number to watch. Update
-   `CALIBRATION.md` with the new table.
+   the [Calibration](#calibration) section with the new table.
 7. Confirm a fixture in `should-warn` still measures the way its bucket claims. A fixture in
    the warning bucket that the live model is silent on is exactly the mislabelling the buckets
    exist to prevent, and the fix is to replace the fixture, not to relax the rule.
@@ -491,7 +734,7 @@ Each is a single string, ordered so the null hypothesis (`keep_effect`) anchors 
 is skipped silently and contributes nothing, not even a caveat. A callee bound to a prop, a
 parameter, or a cross-file import goes into `unresolved` and drives a caveat, because
 recording a name as though it were a body invites a confident judgment about code the model
-has never seen. `CALIBRATION.md` case C is the warning: with the body unresolved, the model
+has never seen. Calibration case C is the warning: with the body unresolved, the model
 inferred expense from the *name* `buildPivot` and happened to be right. A cross-file
 `formatLabel` that actually regexes an i18n bundle reads cheap at 0.08 and warns, which is
 the same failure with the sign flipped.

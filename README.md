@@ -207,7 +207,7 @@ verdict decisively; text that does not, does not:
 | bounded literal | this component is on the scroll hot path | cost 0.90 → warns | cost 0.86 → **still warns** |
 
 The third row is the useful one: the MVP has no digest pass, so a cross-file callee with a
-reassuring name is judged cheap — the exact false positive `CALIBRATION.md` case C predicts.
+reassuring name is judged cheap — the exact false positive calibration case C predicts.
 Context is the manual fix for it until the digest pass lands. The fourth row is the honest
 limit: the cost question asks how much work the computation does *per render*, so telling it
 the component renders often does not, and should not, change the answer.
@@ -296,7 +296,7 @@ and out of MVP scope.
 `callee_sources` inlines the body of any function the factory calls that is declared in the
 same file *and is actually a function* — a `FunctionDeclaration`, or a binding whose
 initializer is a function or arrow. This is what earns the rule its accuracy: see
-`CALIBRATION.md`, where two identical call shapes get opposite verdicts (2.00 vs 0.11)
+`docs/internals.md`, where two identical call shapes get opposite verdicts (2.00 vs 0.11)
 decided purely by the inlined body.
 
 Everything else — a callee bound to a prop, a parameter, or a cross-file import — goes into
@@ -327,10 +327,12 @@ Above `KEEP_FAMILY_MASS_MAX` (0.5) the rule stays quiet — with one exception: 
 *mode* above the gate is the `wrapMountEffect` finding, since that one keeps the effect rather
 than deleting it. Below the gate the mode decides which fix to print, except that a keep-family
 mode is still refused, because a distribution that splits its belief across keeping and
-deleting is not evidence for either. A second question was written, measured and deleted: the Choice's own distribution separates
+deleting is not evidence for either.
+
+A second question was written, measured and deleted: the Choice's own distribution separates
 "this must go" from "this must stay" by a gap with nothing in it, where the second question's
-two wordings both overlapped. `CALIBRATION.md` has the current numbers, and is the place to
-read them — they move whenever an option is added to the Choice.
+two wordings both overlapped. The Calibration section of `docs/internals.md` has the current
+numbers and is the place to read them — they move whenever an option is added to the Choice.
 
 Summing the family, rather than reading the mode, is the whole point. A distribution like
 `{keep .30, effect_event .12, mount .05, render .31, memo .22}` has a delete-family mode and

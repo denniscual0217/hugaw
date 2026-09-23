@@ -56,9 +56,10 @@ Rules are authored independently and execute batched. This is what keeps cost at
 
 > **Written when there was one.** `react/useeffect-alternatives` shipped 2026-09-21 as the
 > second rule, with its own measured thresholds and a single Choice question; it is specified
-> by `README.md` and `CALIBRATION.md`, not here. The section below is the original
-> `pointless-usememo` design and is left as written — including the `skip` it no longer has
-> (deleted 2026-09-21) — because it is the record of what was designed, not of what is.
+> by `docs/usage.md`, with the measurements in `docs/internals.md`, not here. The section
+> below is the original `pointless-usememo` design and is left as written — including the
+> `skip` it no longer has (deleted 2026-09-21) — because it is the record of what was
+> designed, not of what is.
 
 ### 3.1 `react/pointless-usememo`
 

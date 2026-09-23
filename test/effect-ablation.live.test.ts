@@ -537,8 +537,9 @@ function buildState(testCase: Case): Record<string, unknown> {
 /**
  * The two Noul wordings this ablation measured and the rule then rejected.
  *
- * Neither ships. They are kept here, and only here, because CALIBRATION.md
- * cites their numbers as the reason rule #2 asks one question instead of two:
+ * Neither ships. They are kept here, and only here, because the Calibration
+ * section of `docs/internals.md` cites their numbers as the reason rule #2
+ * asks one question instead of two:
  * a claim that a signal was measured and discarded is worth nothing if the
  * measurement cannot be run again. `justifiedV1` restructured both sides
  * around one axis; `justifiedV2` is the plan's original enumerating phrasing.

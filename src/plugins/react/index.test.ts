@@ -3,7 +3,7 @@ import { createMockJudge } from "../../../test/helpers/mock-judge.js"
 import type { MockScript } from "../../../test/helpers/mock-judge.js"
 import { fixturePath, runFixture } from "../../../test/helpers/run-fixture.js"
 
-/** CALIBRATION.md case A: cheap constant work, no identity consumer. */
+/** Calibration case A: cheap constant work, no identity consumer. */
 const CHEAP: MockScript = () => ({ cost: 0.1, identity_matters: 0.05 })
 
 interface WarnCase {
@@ -164,7 +164,7 @@ describe("react/pointless-usememo — should-warn", () => {
       "react/pointless-usememo::cost",
       "react/pointless-usememo::identity_matters",
     ])
-    // CALIBRATION.md B vs D: the inlined callee body is what decides the verdict.
+    // Calibration B vs D: the inlined callee body is what decides the verdict.
     expect(JSON.stringify(request.state["callee_sources"])).toContain("function format")
     expect(request.model).toBe("jev-1.13.0")
   })
@@ -264,14 +264,14 @@ const SILENT_CASES: readonly SilentCase[] = [
       identity_matters: 0.1,
     }),
   },
-  // Cost above COST_MAX — CALIBRATION.md case E.
+  // Cost above COST_MAX — calibration case E.
   { file: "should-pass/sort-and-group.tsx", script: () => ({ cost: 2.4, identity_matters: 0.1 }) },
   // Confidence below MIN_CONFIDENCE.
   {
     file: "should-pass/low-confidence.tsx",
     script: () => ({ cost: { score: 0.5, confidence: 0.3 }, identity_matters: 0.1 }),
   },
-  // Identity above IDENTITY_MATTERS_MAX — CALIBRATION.md case F.
+  // Identity above IDENTITY_MATTERS_MAX — calibration case F.
   {
     file: "should-pass/identity-ambiguous.tsx",
     script: () => ({ cost: 0.1, identity_matters: 0.7 }),
@@ -486,7 +486,7 @@ describe("react/useeffect-alternatives — should-warn", () => {
     // Measured live the two links split: the second is
     // `collapse_to_handler` 0.58, the first is a near-tie that lands
     // `render_computation` 0.53 with `collapse_to_handler` 0.41 behind it.
-    // CALIBRATION.md records that; what this asserts is that both effects
+    // docs/internals.md records that; what this asserts is that both effects
     // are found and both carry the label the judge returned.
     const { judge, calls } = createMockJudge(replacing("collapse_to_handler"))
     const report = await runFixture("should-warn/state-chain.tsx", {
@@ -550,7 +550,7 @@ describe("react/useeffect-alternatives — should-warn", () => {
 describe("react/useeffect-alternatives — should-pass and not-a-candidate", () => {
   it("websocket-subscription.tsx reaches the model and reports nothing", async () => {
     // Live, this is the highest-stakes case in the rule: keep_effect 0.98,
-    // keep-family mass 0.98 (CALIBRATION.md case 1).
+    // keep-family mass 0.98 (calibration case 1).
     const { judge, calls } = createMockJudge(
       () => ({ replacement: { choice: "keep_effect", probabilities: { keep_effect: 0.98, external_store: 0.02 } } }),
     )

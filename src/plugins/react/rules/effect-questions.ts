@@ -88,7 +88,7 @@ export const KEEP_FAMILY: ReadonlySet<string> = new Set([
  * A second — a Noul asking whether the effect is a genuine synchronisation
  * with something outside React — was written, measured on 17 cases, and
  * deleted. It could not gate. Sorted by what each question actually
- * separated (CALIBRATION.md):
+ * separated (see the Calibration section of `docs/internals.md`):
  *
  *     keep-family mass   deletes <= 0.18            keeps >= 0.95
  *     noul (restructured) deletes 0.11-0.29         keeps 0.16-0.48
