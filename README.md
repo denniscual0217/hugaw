@@ -121,6 +121,63 @@ takes three options, and they do different kinds of work:
   could find.
 - **`message`** and **`messageSuffix`** change only what you read, never whether a finding is
   made.
+- **`extends.replacements`** rewrites what the effect rule tells the model about one of its
+  outcomes.
+
+### Teaching a rule your own hooks
+
+The effect rule can answer `useEffectEvent`, `useMountEffect` and `useLinkedState`, none of
+which are React APIs. It describes their *shape*, so it already recognises yours — but if
+your version differs, or you want the finding to name your import path, say so:
+
+```ts
+"react/useeffect-alternatives": ["error", {
+  extends: {
+    replacements: {
+      // a string replaces the text the model reads for this outcome
+      effect_event:
+        "Keep the effect, but move the reads that should not re-trigger it into this " +
+        "project's `useEffectEvent` from `@/hooks`, which always sees the latest values. " +
+        "The effect synchronises correctly on one dependency yet lists another it only " +
+        "reads. Not `keep_effect`: that has no over-reactive dependency. Not " +
+        "`event_handler`: the effect stays, only a read moves out of it.",
+
+      // an object also replaces the fix printed in the finding
+      data_library: {
+        criterion: "Replace the effect and the state it fills with this project's " +
+          "generated `useXQuery` hook, beside the `.gql` file for that operation. …",
+        fix: "replace the effect and {state} with the generated `useXQuery` hook",
+      },
+    },
+  },
+}],
+```
+
+```
+react/useeffect-alternatives: overriding 2 criteria (effect_event, data_library) and 1 fix
+(data_library) from config; thresholds were measured against the built-in set
+
+  7:3  error  This effect calls `fetchProduct(productId)` and sets `product`. Replace the
+              effect and the `product` state with the generated `useXQuery` hook. …
+```
+
+`{state}` resolves from what the run actually observed, and its clause is dropped when nothing
+was observed rather than printing a hole.
+
+**Keep the substance of what you replace.** A criterion carries three things: what the outcome
+means, what evidence in the payload points to it, and which neighbouring outcome it is *not*.
+Writing a shorter one that only says what it means will silence findings, because the model
+loses the evidence and the contrasts it was separating fifteen outcomes with. Read the built-in
+first — `--dry-run` prints every criterion — and change the naming rather than the scope.
+
+Note also that `effect_event` is one of three outcomes meaning *keep the effect*, so it never
+produces a finding. Sharpening it stops an effect that legitimately uses your hook from being
+mistaken for one to delete. `data_library` reports, so overriding it changes a finding you see.
+Both are worth doing; only one is visible.
+
+Overriding is not free: the model weighs all fifteen outcomes against each other and the
+thresholds were measured against the built-in wording, which is why hugaw prints that line on
+startup. [docs/internals.md](docs/internals.md#calibration) has the measurements.
 
 To go further than configuration — a new rule, a new slice of context, or a new option for the
 effect rule — [docs/internals.md](docs/internals.md) has the walkthroughs, including the rule
